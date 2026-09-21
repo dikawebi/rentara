@@ -19,6 +19,10 @@ return [
         'name' => env('APP_BRAND_NAME', 'Rentara'),
         'tagline' => env('APP_BRAND_TAGLINE', 'Kelola properti. Temukan hunian.'),
         'support_email' => env('APP_SUPPORT_EMAIL'),
+        'logo' => [
+            'full' => 'resources/images/brand/rentara-logo-07a-primary.svg',
+            'mark' => 'resources/images/brand/rentara-logo-07a-mark.svg',
+        ],
     ],
 
     /*

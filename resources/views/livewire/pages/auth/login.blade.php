@@ -1,6 +1,7 @@
 <?php
 
 use App\Livewire\Forms\LoginForm;
+use App\Support\PostAuthenticationRedirect;
 use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
@@ -20,7 +21,14 @@ new #[Layout('layouts.guest')] class extends Component
 
         Session::regenerate();
 
-        $this->redirectIntended(default: route('dashboard', absolute: false), navigate: true);
+        $redirect = app(PostAuthenticationRedirect::class);
+        if ($redirect->isPlatformOnly(auth()->user())) {
+            $this->redirect($redirect->for(auth()->user()), navigate: true);
+
+            return;
+        }
+
+        $this->redirectIntended(default: $redirect->for(auth()->user()), navigate: true);
     }
 }; ?>
 

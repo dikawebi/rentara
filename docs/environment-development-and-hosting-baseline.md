@@ -1,6 +1,6 @@
 # Rentara environment, development, and hosting baseline
 
-This document describes the infrastructure baseline only. Workspace features and Rentara UI are not implemented yet.
+This document describes development and hosting for the current foundation. The implemented workspace and identity behavior is documented separately in [Workspace foundation implementation](workspace-foundation-implementation.md).
 
 ## Local development
 
@@ -28,7 +28,7 @@ The application defaults to the database queue connection, but none of the proje
 - Create the production MySQL 8+ or compatible MariaDB database and set production-only credentials and `APP_KEY` directly in the host environment or uncommitted `.env` file.
 - Use `APP_ENV=production` and `APP_DEBUG=false` in production.
 - Make `storage` and `bootstrap/cache` writable by the web-server user.
-- Run `php artisan migrate --force` only after a reviewed migration/deployment plan. No database is created by this baseline.
+- Run `php artisan migrate --force` only after a reviewed migration/deployment plan. On an existing deployment, see the workspace-foundation migration note before enabling workspace access. No database is created by this application.
 - Configure mail and scheduled jobs only when the corresponding approved product features require them.
 
 Never commit `.env`, database credentials, `APP_KEY`, or production configuration.

@@ -1,10 +1,10 @@
 # Authorization architecture decision
 
-**Status:** Owner-approved architecture decision. **Not implemented in RENTARA-INFRA-001.**
+**Status:** Owner-approved architecture decision; implemented for the RENTARA-FEAT-002 workspace-foundation scope.
 
-This document records the approved target authorization architecture. It does not describe current application behavior and must not be read as evidence that workspace authorization, roles, memberships, invitations, or safeguards exist in the baseline.
+This decision is implemented for identity status, platform and workspace roles, workspace context, existing-user membership management, and canonical-owner safeguards. The implementation details and boundaries are recorded in [Workspace foundation implementation](workspace-foundation-implementation.md). Features outside that document's scope remain unimplemented.
 
-## Approved model
+## Implemented model
 
 - `super_admin` is a global, platform-only role. It is not a workspace role.
 - `owner`, `manager`, and `staff` are the authoritative roles on an active workspace membership.
@@ -13,6 +13,6 @@ This document records the approved target authorization architecture. It does no
 - Release 0 uses an existing-user membership lifecycle: memberships are for users already known to the application. Invitations are not part of that lifecycle.
 - Canonical owner safeguards are required so that a workspace retains its canonical owner; membership and role changes must not bypass those safeguards.
 
-## Implementation boundary
+## Current boundary
 
-The current database has no workspace or membership schema, and the current routes and authorization middleware do not implement this decision. The current starter-kit authentication and its email-verification requirement on the dashboard are separate from the approved future workspace-authorization model.
+This implementation does not provide invitations, ownership transfer, co-owners, property-level assignments, an audit viewer/listing/API, or other product modules. Member lifecycle changes are recorded by the `RENTARA-FEAT-004` audit baseline (see implementation doc); `super_admin` remains platform-only and is never a workspace-role bypass.

@@ -3,108 +3,81 @@
 use App\Livewire\Actions\Logout;
 use Livewire\Volt\Component;
 
-new class extends Component
-{
-    /**
-     * Log the current user out of the application.
-     */
+new class extends Component {
     public function logout(Logout $logout): void
     {
         $logout();
-
         $this->redirect('/', navigate: true);
     }
 }; ?>
 
-<nav x-data="{ open: false }" class="bg-white border-b border-gray-100">
-    <!-- Primary Navigation Menu -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between h-16">
-            <div class="flex">
-                <!-- Logo -->
-                <div class="shrink-0 flex items-center">
-                    <a href="{{ route('dashboard') }}" wire:navigate>
-                        <x-application-logo class="block h-9 w-auto fill-current text-gray-800" />
-                    </a>
+@php
+    $user = auth()->user();
+    $workspace = request()->attributes->get('currentWorkspace');
+    $platform = request()->routeIs('admin.*');
+@endphp
+
+<div x-data="{
+    drawer: false,
+    profile: false,
+    openDrawer() { this.drawer = true; this.$nextTick(() => this.$refs.drawerClose.focus()); },
+    closeDrawer() { this.drawer = false; this.$nextTick(() => this.$refs.mobileTrigger.focus()); },
+    openProfile() { this.profile = true; },
+    closeProfile(restoreFocus = false) { this.profile = false; if (restoreFocus) this.$nextTick(() => this.$refs.profileTrigger.focus()); },
+    trapDrawerFocus(event) {
+        const focusable = [...this.$refs.drawer.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex=\'-1\'])')].filter((element) => !element.hidden);
+        const first = focusable[0]; const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+}">
+    <a href="#main-content" class="sr-only fixed left-4 top-4 z-50 rounded bg-white px-3 py-2 text-rentara-navy shadow focus:not-sr-only">Lewati navigasi</a>
+
+    <aside class="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col bg-rentara-navy px-4 py-6 lg:flex" aria-label="Navigasi utama">
+        <a href="{{ $platform ? route('admin.dashboard') : route('app.dashboard') }}" class="mb-9 inline-flex w-fit" wire:navigate>
+            <x-brand-logo variant="full" theme="dark" class="h-10 w-auto" />
+        </a>
+        <p class="px-3 text-xs font-bold uppercase tracking-widest text-slate-400">{{ $platform ? 'Platform' : 'Operasional' }}</p>
+        <nav class="mt-3 space-y-1">
+            <a href="{{ $platform ? route('admin.dashboard') : route('app.dashboard') }}" class="rentara-nav-link {{ request()->routeIs($platform ? 'admin.dashboard' : 'app.dashboard') ? 'rentara-nav-link-active' : '' }}" wire:navigate aria-current="{{ request()->routeIs($platform ? 'admin.dashboard' : 'app.dashboard') ? 'page' : 'false' }}">Dashboard</a>
+            @if (! $platform && $workspace && $user->can('update', $workspace))
+                <a href="{{ route('app.workspace.settings') }}" class="rentara-nav-link {{ request()->routeIs('app.workspace.settings') ? 'rentara-nav-link-active' : '' }}" wire:navigate>Pengaturan ruang kerja</a>
+            @endif
+            @if (! $platform && $workspace && $user->can('manageMembers', $workspace))
+                <a href="{{ route('app.members') }}" class="rentara-nav-link {{ request()->routeIs('app.members') ? 'rentara-nav-link-active' : '' }}" wire:navigate>Anggota</a>
+            @endif
+        </nav>
+        <div class="mt-auto rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-slate-300">{{ config('app.brand.tagline') }}</div>
+    </aside>
+
+    <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur lg:pl-72">
+        <div class="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
+            <button x-ref="mobileTrigger" type="button" class="rounded-lg p-2 text-rentara-navy lg:hidden" @click="openDrawer()" aria-label="Buka navigasi" :aria-expanded="drawer.toString()" aria-controls="mobile-navigation">
+                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+            </button>
+            <div class="lg:hidden"><x-brand-logo variant="mark" class="h-9 w-9" /></div>
+            <div class="hidden min-w-0 lg:block">@if ($workspace && ! $platform)<p class="truncate text-sm font-semibold text-rentara-navy">{{ $workspace->name }}</p><p class="text-xs text-slate-500">Ruang kerja aktif</p>@else<p class="text-sm text-slate-500">{{ $platform ? 'Administrasi platform' : 'Operasional properti' }}</p>@endif</div>
+            <div class="ml-auto flex items-center gap-2">
+                <button type="button" disabled class="rounded-lg p-2 text-slate-400" aria-label="Notifikasi belum tersedia" title="Notifikasi tersedia pada rilis mendatang"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-width="2" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 00-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m2 0v1a2 2 0 004 0v-1" /></svg></button>
+                @if ($workspace && ! $platform)<button type="button" disabled class="hidden rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-500 sm:block" title="Pergantian ruang kerja tersedia pada rilis mendatang">{{ $workspace->name }} · Ganti nanti</button>@endif
+                <div class="relative" @keydown.escape.stop="closeProfile(true)">
+                    <button x-ref="profileTrigger" type="button" @click="profile ? closeProfile() : openProfile()" class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left" :aria-expanded="profile.toString()" aria-controls="profile-navigation" aria-label="Menu profil {{ $user->name }}"><span class="grid h-8 w-8 place-items-center rounded-full bg-rentara-blue text-sm font-bold text-white">{{ mb_strtoupper(mb_substr($user->name, 0, 1)) }}</span><span class="hidden max-w-32 truncate text-sm font-semibold text-rentara-navy sm:block">{{ $user->name }}</span></button>
+                    <div x-cloak x-show="profile" @click.outside="closeProfile()" id="profile-navigation" class="absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+                        <ul>
+                            <li><a href="{{ route('profile') }}" class="block rounded-lg px-3 py-2 text-sm hover:bg-slate-50" wire:navigate>Profil</a></li>
+                            <li><button wire:click="logout" class="w-full rounded-lg px-3 py-2 text-left text-sm text-rentara-danger hover:bg-red-50">Keluar</button></li>
+                        </ul>
+                    </div>
                 </div>
-
-                <!-- Navigation Links -->
-                <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                    <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
-                        {{ __('Dashboard') }}
-                    </x-nav-link>
-                </div>
-            </div>
-
-            <!-- Settings Dropdown -->
-            <div class="hidden sm:flex sm:items-center sm:ms-6">
-                <x-dropdown align="right" width="48">
-                    <x-slot name="trigger">
-                        <button class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 bg-white hover:text-gray-700 focus:outline-none transition ease-in-out duration-150">
-                            <div x-data="{{ json_encode(['name' => auth()->user()->name]) }}" x-text="name" x-on:profile-updated.window="name = $event.detail.name"></div>
-
-                            <div class="ms-1">
-                                <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-                                </svg>
-                            </div>
-                        </button>
-                    </x-slot>
-
-                    <x-slot name="content">
-                        <x-dropdown-link :href="route('profile')" wire:navigate>
-                            {{ __('Profile') }}
-                        </x-dropdown-link>
-
-                        <!-- Authentication -->
-                        <button wire:click="logout" class="w-full text-start">
-                            <x-dropdown-link>
-                                {{ __('Log Out') }}
-                            </x-dropdown-link>
-                        </button>
-                    </x-slot>
-                </x-dropdown>
-            </div>
-
-            <!-- Hamburger -->
-            <div class="-me-2 flex items-center sm:hidden">
-                <button @click="open = ! open" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 focus:text-gray-500 transition duration-150 ease-in-out">
-                    <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
-                        <path :class="{'hidden': open, 'inline-flex': ! open }" class="inline-flex" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-                        <path :class="{'hidden': ! open, 'inline-flex': open }" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
             </div>
         </div>
+    </header>
+
+    <div x-cloak x-show="drawer" class="relative z-50 lg:hidden" id="mobile-navigation" role="dialog" aria-modal="true" aria-label="Navigasi utama" @keydown.escape.window="drawer && closeDrawer()" @keydown.tab="trapDrawerFocus($event)">
+        <div class="fixed inset-0 bg-slate-950/50" @click="closeDrawer()"></div>
+        <aside x-ref="drawer" class="fixed inset-y-0 left-0 flex w-72 flex-col bg-rentara-navy px-4 py-6 shadow-xl">
+            <div class="mb-8 flex items-center justify-between"><x-brand-logo variant="full" theme="dark" class="h-10 w-auto" /><button x-ref="drawerClose" type="button" @click="closeDrawer()" class="rounded p-2 text-white" aria-label="Tutup navigasi">×</button></div>
+            <nav class="space-y-1"><a href="{{ $platform ? route('admin.dashboard') : route('app.dashboard') }}" class="rentara-nav-link rentara-nav-link-active" wire:navigate>Dashboard</a>@if (! $platform && $workspace && $user->can('update', $workspace))<a href="{{ route('app.workspace.settings') }}" class="rentara-nav-link" wire:navigate>Pengaturan ruang kerja</a>@endif @if (! $platform && $workspace && $user->can('manageMembers', $workspace))<a href="{{ route('app.members') }}" class="rentara-nav-link" wire:navigate>Anggota</a>@endif</nav>
+        </aside>
     </div>
-
-    <!-- Responsive Navigation Menu -->
-    <div :class="{'block': open, 'hidden': ! open}" class="hidden sm:hidden">
-        <div class="pt-2 pb-3 space-y-1">
-            <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
-                {{ __('Dashboard') }}
-            </x-responsive-nav-link>
-        </div>
-
-        <!-- Responsive Settings Options -->
-        <div class="pt-4 pb-1 border-t border-gray-200">
-            <div class="px-4">
-                <div class="font-medium text-base text-gray-800" x-data="{{ json_encode(['name' => auth()->user()->name]) }}" x-text="name" x-on:profile-updated.window="name = $event.detail.name"></div>
-                <div class="font-medium text-sm text-gray-500">{{ auth()->user()->email }}</div>
-            </div>
-
-            <div class="mt-3 space-y-1">
-                <x-responsive-nav-link :href="route('profile')" wire:navigate>
-                    {{ __('Profile') }}
-                </x-responsive-nav-link>
-
-                <!-- Authentication -->
-                <button wire:click="logout" class="w-full text-start">
-                    <x-responsive-nav-link>
-                        {{ __('Log Out') }}
-                    </x-responsive-nav-link>
-                </button>
-            </div>
-        </div>
-    </div>
-</nav>
+</div>

@@ -12,7 +12,15 @@ export default {
     theme: {
         extend: {
             fontFamily: {
-                sans: ['Figtree', ...defaultTheme.fontFamily.sans],
+                sans: ['Inter', 'Plus Jakarta Sans', ...defaultTheme.fontFamily.sans],
+                display: ['Manrope', 'Inter', ...defaultTheme.fontFamily.sans],
+            },
+            colors: {
+                rentara: {
+                    navy: '#16324F', blue: '#2563EB', teal: '#0F766E',
+                    surface: '#FFFFFF', background: '#F8FAFC', foreground: '#172033',
+                    success: '#15803D', warning: '#B45309', danger: '#B91C1C',
+                },
             },
         },
     },

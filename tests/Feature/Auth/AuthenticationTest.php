@@ -32,7 +32,7 @@ class AuthenticationTest extends TestCase
 
         $component
             ->assertHasNoErrors()
-            ->assertRedirect(route('dashboard', absolute: false));
+            ->assertRedirect(route('app.dashboard', absolute: false));
 
         $this->assertAuthenticated();
     }
@@ -60,11 +60,11 @@ class AuthenticationTest extends TestCase
 
         $this->actingAs($user);
 
-        $response = $this->get('/dashboard');
+        $response = $this->get('/app/dashboard');
 
         $response
-            ->assertOk()
-            ->assertSeeVolt('layout.navigation');
+            ->assertStatus(409)
+            ->assertSee('Belum ada ruang kerja aktif');
     }
 
     public function test_users_can_logout(): void
