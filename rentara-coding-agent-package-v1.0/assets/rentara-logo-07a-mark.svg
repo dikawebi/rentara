@@ -1,0 +1,13 @@
+<svg width="256" height="256" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>Rentara Balanced Link logo mark</title>
+  <defs>
+    <linearGradient id="rentara-balanced-link" x1="22" y1="26" x2="97" y2="98" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#0F766E"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="112" height="112" rx="32" fill="#16324F"/>
+  <path d="M25 69L46 43L60 57L74 43L95 69" stroke="url(#rentara-balanced-link)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M32 69V96H50V80H70V96H88V69" stroke="#F8FAFC" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="60" cy="57" r="7" fill="#0F766E"/>
+</svg>

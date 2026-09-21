@@ -1,0 +1,14 @@
+<svg width="500" height="140" viewBox="0 0 500 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>Rentara Balanced Link primary logo</title>
+  <defs>
+    <linearGradient id="rentara-balanced-link" x1="29" y1="34" x2="88" y2="96" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#0F766E"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="20" width="100" height="100" rx="30" fill="#16324F"/>
+  <path d="M31 73L49 51L60 62L71 51L89 73" stroke="url(#rentara-balanced-link)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M37 73V96H53V80H67V96H83V73" stroke="#F8FAFC" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="60" cy="62" r="6" fill="#0F766E"/>
+  <text x="136" y="91" fill="#16324F" font-family="Manrope, 'Plus Jakarta Sans', Inter, Arial, sans-serif" font-size="58" font-weight="800" letter-spacing="-4">rentara</text>
+</svg>
