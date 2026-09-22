@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\PlatformRole;
+use App\Enums\ContractStatus;
 use App\Enums\WorkspaceMemberRole;
 use App\Models\Building;
 use App\Models\Property;
@@ -13,6 +14,9 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceMember;
 use App\Models\Tenant;
+use App\Models\RentalContract;
+use App\Models\CheckIn;
+use App\Models\CheckOut;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Database\Schema\Blueprint;
@@ -106,8 +110,8 @@ class UnitTest extends TestCase
 
         $this->actingAs($owner)->withSession($session)
             ->put(route('app.properties.units.update', [$property, $unit]), $this->unitPayload(['unit_number' => 'A-102', 'status' => 'occupied']))
-            ->assertRedirect();
-        $this->assertDatabaseHas('units', ['id' => $unit->id, 'unit_number' => 'A-102', 'status' => 'occupied']);
+            ->assertSessionHasErrors('status');
+        $this->assertDatabaseHas('units', ['id' => $unit->id, 'unit_number' => 'A-101', 'status' => 'available']);
 
         $this->actingAs($owner)->withSession($session)
             ->delete(route('app.properties.units.destroy', [$property, $unit]))
@@ -141,6 +145,10 @@ class UnitTest extends TestCase
 
         $this->actingAs($owner)->withSession($session)
             ->post(route('app.properties.units.store', $property), $this->unitPayload(['status' => 'sold']))
+            ->assertSessionHasErrors('status');
+
+        $this->actingAs($owner)->withSession($session)
+            ->post(route('app.properties.units.store', $property), $this->unitPayload(['status' => 'occupied']))
             ->assertSessionHasErrors('status');
 
         $this->actingAs($owner)->withSession($session)
@@ -400,7 +408,7 @@ class UnitTest extends TestCase
 
         $this->actingAs($owner)->withSession($session)
             ->post(route('app.properties.units.store', $property), $this->unitPayload([
-                'unit_number' => 'P-01', 'capacity' => 4, 'status' => 'occupied',
+                'unit_number' => 'P-01', 'capacity' => 4,
             ]))
             ->assertRedirect();
         $unit = Unit::where('property_id', $property->id)->sole();
@@ -412,7 +420,7 @@ class UnitTest extends TestCase
         $this->actingAs($owner)->withSession($session)
             ->put(route('app.properties.units.update', [$property, $unit]), $payload)
             ->assertRedirect();
-        $this->assertDatabaseHas('units', ['id' => $unit->id, 'capacity' => 4, 'status' => 'occupied']);
+        $this->assertDatabaseHas('units', ['id' => $unit->id, 'capacity' => 4, 'status' => 'available']);
     }
 
     public function test_capacity_cannot_be_reduced_below_active_tenant_count(): void
@@ -429,5 +437,49 @@ class UnitTest extends TestCase
 
         $response->assertSessionHasErrors('capacity');
         $this->assertDatabaseHas('units', ['id' => $unit->id, 'capacity' => 2]);
+    }
+
+    public function test_unit_delete_is_blocked_by_non_historical_contracts_but_allows_completed_and_terminated(): void
+    {
+        $owner = User::factory()->create();
+        $workspace = $this->workspaceWithRole($owner);
+        $property = $this->property($workspace, $owner);
+        $session = ['current_workspace_id' => $workspace->id];
+
+        foreach ([ContractStatus::Draft, ContractStatus::Pending, ContractStatus::Cancelled, ContractStatus::Active, ContractStatus::Expiring] as $status) {
+            $unit = Unit::factory()->create(['workspace_id' => $workspace->id, 'property_id' => $property->id]);
+            RentalContract::factory()->create(['workspace_id' => $workspace->id, 'property_id' => $property->id, 'unit_id' => $unit->id, 'status' => $status]);
+            $this->actingAs($owner)->withSession($session)->delete(route('app.properties.units.destroy', [$property, $unit]))->assertSessionHasErrors('unit');
+            $this->assertDatabaseHas('units', ['id' => $unit->id, 'deleted_at' => null]);
+        }
+
+        foreach ([ContractStatus::Completed, ContractStatus::Terminated] as $status) {
+            $unit = Unit::factory()->create(['workspace_id' => $workspace->id, 'property_id' => $property->id]);
+            RentalContract::factory()->create(['workspace_id' => $workspace->id, 'property_id' => $property->id, 'unit_id' => $unit->id, 'status' => $status]);
+            $this->actingAs($owner)->withSession($session)->delete(route('app.properties.units.destroy', [$property, $unit]))->assertRedirect();
+            $this->assertSoftDeleted('units', ['id' => $unit->id]);
+        }
+    }
+
+    public function test_deleting_unit_preserves_historical_contract_events_and_tenant_pivot(): void
+    {
+        $owner = User::factory()->create();
+        $workspace = $this->workspaceWithRole($owner);
+        $property = $this->property($workspace, $owner);
+        $unit = Unit::factory()->create(['workspace_id' => $workspace->id, 'property_id' => $property->id]);
+        $tenant = Tenant::factory()->create(['workspace_id' => $workspace->id, 'unit_id' => null]);
+        $contract = RentalContract::factory()->create(['workspace_id' => $workspace->id, 'property_id' => $property->id, 'unit_id' => $unit->id, 'status' => ContractStatus::Completed]);
+        $contract->tenants()->attach($tenant->id, ['workspace_id' => $workspace->id]);
+        $checkIn = CheckIn::create(['rental_contract_id' => $contract->id, 'checked_in_at' => now(), 'deposit_received' => 0]);
+        $checkOut = CheckOut::create(['rental_contract_id' => $contract->id, 'checked_out_at' => now(), 'deposit_returned' => 0, 'deposit_deduction' => 0]);
+
+        $this->actingAs($owner)->withSession(['current_workspace_id' => $workspace->id])
+            ->delete(route('app.properties.units.destroy', [$property, $unit]))->assertRedirect();
+
+        $this->assertSoftDeleted('units', ['id' => $unit->id]);
+        $this->assertDatabaseHas('rental_contracts', ['id' => $contract->id]);
+        $this->assertDatabaseHas('contract_tenant', ['rental_contract_id' => $contract->id, 'tenant_id' => $tenant->id]);
+        $this->assertDatabaseHas('check_ins', ['id' => $checkIn->id]);
+        $this->assertDatabaseHas('check_outs', ['id' => $checkOut->id]);
     }
 }

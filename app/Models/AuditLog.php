@@ -3,6 +3,9 @@
 namespace App\Models;
 
 use App\Support\AuditLogger;
+use App\Models\RentalContract;
+use App\Models\CheckIn;
+use App\Models\CheckOut;
 use Database\Factories\AuditLogFactory;
 use DateTimeImmutable;
 use InvalidArgumentException;
@@ -72,6 +75,12 @@ class AuditLog extends Model
             AuditLogger::LOGIN_DENIED, AuditLogger::LOGOUT, AuditLogger::MEMBER_ADDED,
             AuditLogger::MEMBER_ROLE_CHANGED, AuditLogger::MEMBER_STATUS_CHANGED,
             AuditLogger::MEMBER_REMOVED, AuditLogger::PLATFORM_DASHBOARD_ACCESSED,
+            AuditLogger::CONTRACT_ACTIVATED, AuditLogger::CONTRACT_TERMINATED,
+            AuditLogger::CONTRACT_CHECKED_OUT, AuditLogger::CONTRACT_DEPOSIT_SETTLED,
+             AuditLogger::CONTRACT_CHECKED_IN,
+             AuditLogger::CONTRACT_SUBMITTED, AuditLogger::CONTRACT_CANCELLED,
+             AuditLogger::CONTRACT_RENEWED, AuditLogger::CONTRACT_TENANT_ATTACHED,
+             AuditLogger::CONTRACT_RESTORED, AuditLogger::CONTRACT_DELETED,
         ], true)) {
             throw new InvalidArgumentException('Audit events must be registered audit event names.');
         }
@@ -84,7 +93,7 @@ class AuditLog extends Model
 
         $type = $attributes['auditable_type'] ?? null;
         $id = $attributes['auditable_id'] ?? null;
-        if (($type === null) !== ($id === null) || ($type !== null && (! in_array($type, [User::class, Workspace::class, WorkspaceMember::class], true) || ! is_int($id) || $id < 1))) {
+        if (($type === null) !== ($id === null) || ($type !== null && (! in_array($type, [User::class, Workspace::class, WorkspaceMember::class, RentalContract::class, CheckIn::class, CheckOut::class], true) || ! is_int($id) || $id < 1))) {
             throw new InvalidArgumentException('Audit auditable references must be known model identifiers.');
         }
 

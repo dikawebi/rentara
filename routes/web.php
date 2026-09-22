@@ -13,6 +13,7 @@ use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\MediaController;
 use App\Http\Controllers\UnitAmenityController;
 use App\Http\Controllers\TenantController;
+use App\Http\Controllers\RentalContractController;
 use App\Support\PostAuthenticationRedirect;
 use Illuminate\Support\Facades\Route;
 
@@ -52,6 +53,16 @@ Route::middleware(['auth', 'active-user', 'verified', 'workspace-context'])->pre
     Route::resource('tenants', TenantController::class)->except(['show'])->whereNumber('tenant');
     Route::get('tenants/{tenant}', [TenantController::class, 'show'])->whereNumber('tenant')->name('tenants.show');
     Route::post('tenants/{tenant}/restore', [TenantController::class, 'restore'])->whereNumber('tenant')->name('tenants.restore');
+    Route::resource('contracts', RentalContractController::class)->except(['edit'])->whereNumber('contract');
+    Route::post('contracts/{contract}/restore', [RentalContractController::class, 'restore'])->whereNumber('contract')->name('contracts.restore');
+    Route::post('contracts/{contract}/submit', [RentalContractController::class, 'submit'])->whereNumber('contract')->name('contracts.submit');
+    Route::post('contracts/{contract}/activate', [RentalContractController::class, 'activate'])->whereNumber('contract')->name('contracts.activate');
+    Route::post('contracts/{contract}/cancel', [RentalContractController::class, 'cancel'])->whereNumber('contract')->name('contracts.cancel');
+    Route::post('contracts/{contract}/terminate', [RentalContractController::class, 'terminate'])->whereNumber('contract')->name('contracts.terminate');
+    Route::post('contracts/{contract}/renew', [RentalContractController::class, 'renew'])->whereNumber('contract')->name('contracts.renew');
+    Route::post('contracts/{contract}/tenants', [RentalContractController::class, 'attachTenant'])->whereNumber('contract')->name('contracts.tenants.attach');
+    Route::post('contracts/{contract}/check-in', [RentalContractController::class, 'checkIn'])->whereNumber('contract')->name('contracts.check-in');
+    Route::post('contracts/{contract}/check-out', [RentalContractController::class, 'checkOut'])->whereNumber('contract')->name('contracts.check-out');
     Route::get('properties/{property}/units/{unit}/amenities/edit', [UnitAmenityController::class, 'edit'])->whereNumber(['property', 'unit'])->name('properties.units.amenities.edit');
     Route::put('properties/{property}/units/{unit}/amenities', [UnitAmenityController::class, 'update'])->whereNumber(['property', 'unit'])->name('properties.units.amenities.update');
     Route::get('properties/{property}/media/{unit?}', [MediaController::class, 'index'])->whereNumber(['property', 'unit'])->name('properties.media.index');

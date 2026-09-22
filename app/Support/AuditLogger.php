@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use App\Enums\UserStatus;
 use App\Enums\WorkspaceMemberRole;
+use App\Enums\ContractStatus;
 use DateTimeImmutable;
 use DateTimeInterface;
 use InvalidArgumentException;
@@ -28,6 +29,37 @@ class AuditLogger
     public const MEMBER_STATUS_CHANGED = 'workspace.member_status_changed';
     public const MEMBER_REMOVED = 'workspace.member_removed';
     public const PLATFORM_DASHBOARD_ACCESSED = 'platform.dashboard_accessed';
+    public const CONTRACT_ACTIVATED = 'contract.activated';
+    public const CONTRACT_TERMINATED = 'contract.terminated';
+    public const CONTRACT_CHECKED_OUT = 'contract.checked_out';
+    public const CONTRACT_DEPOSIT_SETTLED = 'contract.deposit_settled';
+    public const CONTRACT_CHECKED_IN = 'contract.checked_in';
+    public const CONTRACT_SUBMITTED = 'contract.submitted';
+    public const CONTRACT_CANCELLED = 'contract.cancelled';
+    public const CONTRACT_RENEWED = 'contract.renewed';
+    public const CONTRACT_TENANT_ATTACHED = 'contract.tenant_attached';
+    public const CONTRACT_RESTORED = 'contract.restored';
+    public const CONTRACT_DELETED = 'contract.deleted';
+
+    public function contractStatusChanged(?User $actor, \App\Models\RentalContract $contract, ContractStatus $old): void
+    {
+        $event = $contract->status === ContractStatus::Terminated ? self::CONTRACT_TERMINATED : ($contract->status === ContractStatus::Completed ? self::CONTRACT_CHECKED_OUT : ($contract->status === ContractStatus::Cancelled ? self::CONTRACT_CANCELLED : ($contract->status === ContractStatus::Pending ? self::CONTRACT_SUBMITTED : self::CONTRACT_ACTIVATED)));
+        $this->write($event, $actor, $contract->workspace, $contract, ['status'=>$old->value], ['status'=>$contract->status->value, 'contract_id'=>(int)$contract->id]);
+    }
+    public function contractTerminated(?User $actor, \App\Models\RentalContract $contract, ContractStatus $old): void
+    { $this->write(self::CONTRACT_TERMINATED, $actor, $contract->workspace, $contract, ['status'=>$old->value], ['status'=>$contract->status->value, 'contract_id'=>(int)$contract->id, 'unit_id'=>(int)$contract->unit_id, 'property_id'=>(int)$contract->property_id]); }
+    public function contractEvent(?User $actor, \App\Models\RentalContract $contract, string $event, int $childId, string $childKey): void
+    {
+        $this->write($event, $actor, $contract->workspace, $contract, null, ['contract_id'=>(int)$contract->id, $childKey=>$childId]);
+    }
+    public function contractTenantAttached(?User $actor, \App\Models\RentalContract $contract, int $tenantId): void
+    { $this->write(self::CONTRACT_TENANT_ATTACHED, $actor, $contract->workspace, $contract, null, ['contract_id'=>(int)$contract->id, 'tenant_id'=>$tenantId]); }
+
+    public function contractRestored(?User $actor, \App\Models\RentalContract $contract, ContractStatus $old): void
+    { $this->write(self::CONTRACT_RESTORED, $actor, $contract->workspace, $contract, ['status'=>$old->value], ['status'=>$contract->status->value, 'contract_id'=>(int)$contract->id]); }
+
+    public function contractDeleted(?User $actor, \App\Models\RentalContract $contract): void
+    { $this->write(self::CONTRACT_DELETED, $actor, $contract->workspace, $contract, ['status'=>$contract->status->value], null); }
 
     public function registration(User $user, ?AuditRequestContext $context = null): void
     {
@@ -121,19 +153,19 @@ class AuditLogger
     public function assertSafeValues(?array $values): void
     {
         foreach ($values ?? [] as $key => $value) {
-            if (! in_array($key, ['user_id', 'workspace_id', 'member_id', 'role', 'status', 'last_login_at'], true)) {
+             if (! in_array($key, ['user_id', 'workspace_id', 'member_id', 'contract_id', 'tenant_id', 'unit_id', 'property_id', 'check_in_id', 'check_out_id', 'role', 'status', 'last_login_at'], true)) {
                 throw new InvalidArgumentException('Only allowlisted audit values can be recorded.');
             }
             if (preg_match('/password|token|remember|api[_-]?key|credential|document|content|path/i', (string) $key) || (is_string($value) && preg_match('/password|token|remember|api[_-]?key|credential|document|content|path|secret|bearer/i', $value))) {
                 throw new InvalidArgumentException('Secret or raw document fields cannot be audited.');
             }
-            if (in_array($key, ['user_id', 'workspace_id', 'member_id'], true) && (! is_int($value) || $value < 1)) {
+             if (in_array($key, ['user_id', 'workspace_id', 'member_id', 'contract_id', 'tenant_id', 'unit_id', 'property_id', 'check_in_id', 'check_out_id'], true) && (! is_int($value) || $value < 1)) {
                 throw new InvalidArgumentException('Audit identifiers must be positive integers.');
             }
             if ($key === 'role' && (! is_string($value) || ! in_array($value, array_column(WorkspaceMemberRole::cases(), 'value'), true))) {
                 throw new InvalidArgumentException('Audit roles must be valid workspace roles.');
             }
-            if ($key === 'status' && (! is_string($value) || ! in_array($value, array_column(UserStatus::cases(), 'value'), true))) {
+            if ($key === 'status' && (! is_string($value) || ! in_array($value, array_merge(array_column(UserStatus::cases(), 'value'), array_column(ContractStatus::cases(), 'value')), true))) {
                 throw new InvalidArgumentException('Audit statuses must be valid user statuses.');
             }
             if ($key === 'last_login_at' && $value !== null && (! is_string($value) || DateTimeImmutable::createFromFormat(DateTimeInterface::ATOM, $value) === false)) {

@@ -207,4 +207,14 @@ class TenantTest extends TestCase
         $this->actingAs($owner)->withSession($session)->get(route('app.tenants.index'))
             ->assertOk()->assertDontSee('ID-SECRET')->assertDontSee('Kontak Rahasia');
     }
+
+    public function test_owner_tenant_list_includes_unassigned_tenants(): void
+    {
+        [$owner, $workspace, , $unit] = $this->setupWorkspace();
+        Tenant::factory()->create(['workspace_id' => $workspace->id, 'unit_id' => $unit->id, 'name' => 'Assigned Tenant']);
+        Tenant::factory()->create(['workspace_id' => $workspace->id, 'unit_id' => null, 'name' => 'Unassigned Tenant']);
+
+        $this->actingAs($owner)->withSession(['current_workspace_id' => $workspace->id])
+            ->get(route('app.tenants.index'))->assertOk()->assertSee('Assigned Tenant')->assertSee('Unassigned Tenant');
+    }
 }

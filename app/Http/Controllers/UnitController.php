@@ -14,6 +14,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use App\Models\RentalContract;
+use App\Enums\ContractStatus;
+use App\Support\OccupancyLockOrder;
 
 class UnitController extends Controller
 {
@@ -101,7 +104,7 @@ class UnitController extends Controller
             'rental_price' => ['required', 'integer', 'min:0', 'max:999999999999'],
             'rental_period' => ['required', Rule::enum(RentalPeriod::class)],
             'capacity' => ['nullable', 'integer', 'min:1', 'max:100'],
-            'status' => ['nullable', Rule::enum(UnitStatus::class)],
+            'status' => ['nullable', Rule::enum(UnitStatus::class), Rule::notIn([UnitStatus::Occupied->value])],
         ];
     }
 
@@ -193,6 +196,12 @@ class UnitController extends Controller
         DB::transaction(function () use ($property, $unit, $data) {
             $lockedUnit = Unit::where('workspace_id', $property->workspace_id)
                 ->where('property_id', $property->id)->lockForUpdate()->findOrFail($unit->id);
+             $hasActiveContract = RentalContract::where('unit_id',$lockedUnit->id)->whereIn('status',[ContractStatus::Active->value,ContractStatus::Expiring->value])->whereNull('deleted_at')->exists();
+             OccupancyLockOrder::contracts(RentalContract::where('unit_id',$lockedUnit->id)->whereIn('status',[ContractStatus::Active->value,ContractStatus::Expiring->value])->whereNull('deleted_at')->pluck('id'), $lockedUnit->workspace_id);
+             OccupancyLockOrder::tenants($lockedUnit->activeTenants()->pluck('id'), $lockedUnit->workspace_id);
+             if (array_key_exists('status', $data) && ($lockedUnit->status === UnitStatus::Occupied || $data['status'] === UnitStatus::Occupied->value || ($hasActiveContract && in_array($data['status'],[UnitStatus::Available->value,UnitStatus::Maintenance->value],true)))) {
+                throw ValidationException::withMessages(['status' => 'Status unit yang ditempati dikelola oleh kontrak aktif.']);
+            }
             if (array_key_exists('capacity', $data) && $data['capacity'] !== null) {
                 $activeCount = $lockedUnit->activeTenants()->count();
                 if ((int) $data['capacity'] < $activeCount) {
@@ -216,8 +225,17 @@ class UnitController extends Controller
         DB::transaction(function () use ($property, $unit) {
             $lockedUnit = Unit::where('workspace_id', $property->workspace_id)
                 ->where('property_id', $property->id)->lockForUpdate()->findOrFail($unit->id);
-            if ($lockedUnit->activeTenants()->exists()) {
-                throw ValidationException::withMessages(['unit' => 'Unit tidak dapat dihapus karena masih memiliki tenant aktif.']);
+             if ($lockedUnit->activeTenants()->exists()) {
+                 throw ValidationException::withMessages(['unit' => 'Unit tidak dapat dihapus karena masih memiliki tenant aktif.']);
+             }
+             $contractIds = RentalContract::where('unit_id', $lockedUnit->id)
+                 ->whereIn('status', [ContractStatus::Draft->value, ContractStatus::Pending->value, ContractStatus::Cancelled->value, ContractStatus::Active->value, ContractStatus::Expiring->value])
+                 ->whereNull('deleted_at')->pluck('id');
+             OccupancyLockOrder::contracts($contractIds, $lockedUnit->workspace_id);
+             if (RentalContract::where('unit_id', $lockedUnit->id)
+                 ->whereIn('status', [ContractStatus::Draft->value, ContractStatus::Pending->value, ContractStatus::Cancelled->value, ContractStatus::Active->value, ContractStatus::Expiring->value])
+                  ->whereNull('deleted_at')->exists()) {
+                 throw ValidationException::withMessages(['unit' => 'Unit tidak dapat dihapus karena masih dirujuk oleh kontrak draft, menunggu, dibatalkan, atau aktif.']);
             }
             $lockedUnit->delete();
         });

@@ -7,11 +7,13 @@ use App\Enums\WorkspaceMemberRole;
 use App\Models\PropertyAssignment;
 use App\Models\Tenant;
 use App\Models\Unit;
+use App\Models\RentalContract;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use App\Support\OccupancyLockOrder;
 
 class TenantController extends Controller
 {
@@ -91,6 +93,9 @@ class TenantController extends Controller
     private function saveWithCapacity(Request $request, Tenant $tenant, array $data, ?Unit $unit): void
     {
         DB::transaction(function () use ($request, $tenant, $data, $unit) {
+            $contractIds = $tenant->exists
+                ? RentalContract::whereHas('tenants', fn($q) => $q->whereKey($tenant->id))->whereIn('status', ['active','expiring'])->orderBy('id')->pluck('id')
+                : collect();
             if ($unit) {
                 $unit = Unit::whereKey($unit->id)->lockForUpdate()->firstOrFail();
                 $count = Tenant::where('unit_id', $unit->id)->where('status', TenantStatus::Active->value)
@@ -99,10 +104,16 @@ class TenantController extends Controller
                     throw ValidationException::withMessages(['unit_id' => 'Kapasitas unit sudah penuh.']);
                 }
             }
-            if ($tenant->trashed()) {
-                $tenant->restore();
+            OccupancyLockOrder::contracts($contractIds, $tenant->workspace_id ?: $this->workspace($request)->id);
+            $lockedTenant = $tenant->exists ? Tenant::withTrashed()->whereKey($tenant->id)->lockForUpdate()->firstOrFail() : $tenant;
+            $oldUnitId = $lockedTenant->unit_id;
+            if ($tenant->exists && ($oldUnitId != ($data['unit_id'] ?? null) || (($data['status'] ?? $lockedTenant->status->value) !== $lockedTenant->status->value))) {
+                if ($contractIds->isNotEmpty()) throw ValidationException::withMessages(['unit_id' => 'Tenant terikat kontrak aktif dan hanya dapat diubah melalui siklus kontrak.']);
             }
-            $tenant->fill($data)->save();
+            if ($tenant->trashed()) {
+                $lockedTenant->restore();
+            }
+            $lockedTenant->fill($data)->save();
         });
     }
 
@@ -114,7 +125,7 @@ class TenantController extends Controller
         $propertyIds = PropertyAssignment::where('workspace_id', $workspace->id)->where('user_id', $request->user()->id)->pluck('property_id');
         $search = trim((string) $request->query('q'));
         $tenants = Tenant::where('workspace_id', $workspace->id)->with('unit')
-            ->when($role !== WorkspaceMemberRole::Owner, fn (Builder $q) => $q->whereHas('unit', fn ($u) => $u->whereIn('property_id', $propertyIds)))
+             ->when($role !== WorkspaceMemberRole::Owner, fn ($q) => $q->whereHas('unit', fn (Builder $unitQuery) => $unitQuery->whereIn('property_id', $propertyIds)))
             ->when($search !== '', fn (Builder $q) => $q->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")->orWhereHas('unit', fn ($u) => $u->where('unit_number', 'like', "%{$search}%"));
@@ -174,7 +185,7 @@ class TenantController extends Controller
     {
         $tenant = $this->find($request, $tenant);
         $this->authorize('delete', $tenant);
-        $tenant->delete();
+        DB::transaction(function () use ($tenant) { $unitIds = [$tenant->unit_id]; OccupancyLockOrder::units($unitIds, $tenant->workspace_id); $contractIds = RentalContract::whereHas('tenants', fn($q) => $q->whereKey($tenant->id))->whereIn('status',['active','expiring'])->orderBy('id')->pluck('id'); OccupancyLockOrder::contracts($contractIds, $tenant->workspace_id); $locked = OccupancyLockOrder::tenants([$tenant->id], $tenant->workspace_id)->get($tenant->id); if ($contractIds->isNotEmpty()) throw ValidationException::withMessages(['tenant'=>'Tenant terikat kontrak aktif dan tidak dapat dihapus.']); $locked->delete(); });
         return redirect()->route('app.tenants.index')->with('status', 'Tenant berhasil dihapus.');
     }
 
