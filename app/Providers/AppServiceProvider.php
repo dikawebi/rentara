@@ -11,6 +11,7 @@ use App\Models\Unit;
 use App\Models\UnitType;
 use App\Models\Amenity;
 use App\Models\Media;
+use App\Models\Tenant;
 use App\Policies\PropertyAssignmentPolicy;
 use App\Policies\PropertyPolicy;
 use App\Policies\StructurePolicy;
@@ -18,6 +19,7 @@ use App\Policies\UnitPolicy;
 use App\Policies\UnitTypePolicy;
 use App\Policies\AmenityPolicy;
 use App\Policies\MediaPolicy;
+use App\Policies\TenantPolicy;
 use App\Support\CurrentWorkspace;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -46,5 +48,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(PropertyAssignment::class, PropertyAssignmentPolicy::class);
         Gate::policy(Amenity::class, AmenityPolicy::class);
         Gate::policy(Media::class, MediaPolicy::class);
+        Gate::policy(Tenant::class, TenantPolicy::class);
     }
 }

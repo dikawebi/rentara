@@ -12,6 +12,7 @@ use App\Http\Controllers\WorkspaceMemberController;
 use App\Http\Controllers\AmenityController;
 use App\Http\Controllers\MediaController;
 use App\Http\Controllers\UnitAmenityController;
+use App\Http\Controllers\TenantController;
 use App\Support\PostAuthenticationRedirect;
 use Illuminate\Support\Facades\Route;
 
@@ -48,6 +49,9 @@ Route::middleware(['auth', 'active-user', 'verified', 'workspace-context'])->pre
     Route::post('unit-types/{unit_type}/restore', [UnitTypeController::class, 'restore'])->whereNumber('unit_type')->name('unit-types.restore');
     Route::resource('amenities', AmenityController::class)->except(['show'])->whereNumber('amenity');
     Route::post('amenities/{amenity}/restore', [AmenityController::class, 'restore'])->whereNumber('amenity')->name('amenities.restore');
+    Route::resource('tenants', TenantController::class)->except(['show'])->whereNumber('tenant');
+    Route::get('tenants/{tenant}', [TenantController::class, 'show'])->whereNumber('tenant')->name('tenants.show');
+    Route::post('tenants/{tenant}/restore', [TenantController::class, 'restore'])->whereNumber('tenant')->name('tenants.restore');
     Route::get('properties/{property}/units/{unit}/amenities/edit', [UnitAmenityController::class, 'edit'])->whereNumber(['property', 'unit'])->name('properties.units.amenities.edit');
     Route::put('properties/{property}/units/{unit}/amenities', [UnitAmenityController::class, 'update'])->whereNumber(['property', 'unit'])->name('properties.units.amenities.update');
     Route::get('properties/{property}/media/{unit?}', [MediaController::class, 'index'])->whereNumber(['property', 'unit'])->name('properties.media.index');

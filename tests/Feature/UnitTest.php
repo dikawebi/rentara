@@ -12,6 +12,7 @@ use App\Models\UnitType;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceMember;
+use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Database\Schema\Blueprint;
@@ -412,5 +413,21 @@ class UnitTest extends TestCase
             ->put(route('app.properties.units.update', [$property, $unit]), $payload)
             ->assertRedirect();
         $this->assertDatabaseHas('units', ['id' => $unit->id, 'capacity' => 4, 'status' => 'occupied']);
+    }
+
+    public function test_capacity_cannot_be_reduced_below_active_tenant_count(): void
+    {
+        $owner = User::factory()->create();
+        $workspace = $this->workspaceWithRole($owner);
+        $property = $this->property($workspace, $owner);
+        $unit = Unit::factory()->create(['workspace_id' => $workspace->id, 'property_id' => $property->id, 'capacity' => 2]);
+        Tenant::factory()->create(['workspace_id' => $workspace->id, 'unit_id' => $unit->id, 'status' => 'active']);
+        Tenant::factory()->create(['workspace_id' => $workspace->id, 'unit_id' => $unit->id, 'status' => 'active']);
+
+        $response = $this->actingAs($owner)->withSession(['current_workspace_id' => $workspace->id])
+            ->put(route('app.properties.units.update', [$property, $unit]), $this->unitPayload(['capacity' => 1]));
+
+        $response->assertSessionHasErrors('capacity');
+        $this->assertDatabaseHas('units', ['id' => $unit->id, 'capacity' => 2]);
     }
 }

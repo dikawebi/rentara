@@ -11,7 +11,9 @@ use App\Models\Property;
 use App\Models\Unit;
 use App\Models\UnitType;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class UnitController extends Controller
 {
@@ -188,7 +190,19 @@ class UnitController extends Controller
 
         $data = $request->validate($this->rules($property, $unit->id), $this->messages());
 
-        $unit->update($data);
+        DB::transaction(function () use ($property, $unit, $data) {
+            $lockedUnit = Unit::where('workspace_id', $property->workspace_id)
+                ->where('property_id', $property->id)->lockForUpdate()->findOrFail($unit->id);
+            if (array_key_exists('capacity', $data) && $data['capacity'] !== null) {
+                $activeCount = $lockedUnit->activeTenants()->count();
+                if ((int) $data['capacity'] < $activeCount) {
+                    throw ValidationException::withMessages([
+                        'capacity' => 'Kapasitas tidak boleh lebih kecil dari jumlah tenant aktif saat ini.',
+                    ]);
+                }
+            }
+            $lockedUnit->update($data);
+        });
 
         return redirect()->route('app.properties.units.index', $property)->with('status', 'Perubahan unit berhasil disimpan.');
     }
@@ -199,7 +213,14 @@ class UnitController extends Controller
         $unit = $this->find($property, $unit);
         $this->authorize('delete', $unit);
 
-        $unit->delete();
+        DB::transaction(function () use ($property, $unit) {
+            $lockedUnit = Unit::where('workspace_id', $property->workspace_id)
+                ->where('property_id', $property->id)->lockForUpdate()->findOrFail($unit->id);
+            if ($lockedUnit->activeTenants()->exists()) {
+                throw ValidationException::withMessages(['unit' => 'Unit tidak dapat dihapus karena masih memiliki tenant aktif.']);
+            }
+            $lockedUnit->delete();
+        });
 
         return redirect()->route('app.properties.units.index', $property)->with('status', 'Unit berhasil dihapus.');
     }

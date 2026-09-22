@@ -12,6 +12,15 @@ class Unit extends Model
 {
     use HasFactory, SoftDeletes;
 
+    protected static function booted(): void
+    {
+        static::deleting(function (Unit $unit): void {
+            if ($unit->isForceDeleting()) {
+                Tenant::withTrashed()->where('unit_id', $unit->id)->update(['unit_id' => null]);
+            }
+        });
+    }
+
     protected $fillable = [
         'workspace_id',
         'property_id',
@@ -79,5 +88,15 @@ class Unit extends Model
     public function media()
     {
         return $this->hasMany(Media::class);
+    }
+
+    public function tenants()
+    {
+        return $this->hasMany(Tenant::class);
+    }
+
+    public function activeTenants()
+    {
+        return $this->hasMany(Tenant::class)->where('status', 'active');
     }
 }

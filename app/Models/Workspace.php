@@ -77,4 +77,6 @@ class Workspace extends Model
     {
         return $this->hasMany(Media::class);
     }
+
+    public function tenants() { return $this->hasMany(Tenant::class); }
 }
