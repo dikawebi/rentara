@@ -56,7 +56,7 @@ class WorkspaceMemberPolicy
 
     private function role(User $user, Workspace $workspace): ?WorkspaceMemberRole
     {
-        return $workspace->members()->where('user_id', $user->id)->where('status', UserStatus::Active)->first()?->role;
+        return $workspace->members()->where('user_id', $user->id)->where('status', UserStatus::Active->value)->first()?->role;
     }
 
     private function isSuperAdmin(User $user): bool

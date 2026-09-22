@@ -68,6 +68,16 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(AuditLog::class);
     }
 
+    public function createdProperties()
+    {
+        return $this->hasMany(Property::class, 'created_by');
+    }
+
+    public function propertyAssignments()
+    {
+        return $this->hasMany(PropertyAssignment::class);
+    }
+
     public function setEmailAttribute(string $value): void
     {
         $this->attributes['email'] = mb_strtolower(trim($value));

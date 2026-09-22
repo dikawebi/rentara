@@ -26,11 +26,11 @@ class CurrentWorkspace
             return null;
         }
         $id = $request->session()->get(self::SESSION_KEY);
-        $membership = WorkspaceMember::query()->with('workspace')->where('user_id', $user->id)->where('status', UserStatus::Active)->whereHas('workspace', fn ($q) => $q->where('status', WorkspaceStatus::Active))
+        $membership = WorkspaceMember::query()->with('workspace')->where('user_id', $user->id)->where('status', UserStatus::Active->value)->whereHas('workspace', fn ($q) => $q->where('status', WorkspaceStatus::Active->value))
             ->when($id, fn ($q) => $q->where('workspace_id', $id), fn ($q) => $q->orderBy('workspace_id'))->first();
         if (! $membership) {
             $request->session()->forget(self::SESSION_KEY);
-            $membership = WorkspaceMember::query()->with('workspace')->where('user_id', $user->id)->where('status', UserStatus::Active)->whereHas('workspace', fn ($q) => $q->where('status', WorkspaceStatus::Active))->orderBy('workspace_id')->first();
+            $membership = WorkspaceMember::query()->with('workspace')->where('user_id', $user->id)->where('status', UserStatus::Active->value)->whereHas('workspace', fn ($q) => $q->where('status', WorkspaceStatus::Active->value))->orderBy('workspace_id')->first();
         }
         if (! $membership) {
             return null;
@@ -42,7 +42,7 @@ class CurrentWorkspace
 
     public function switch(User $user, int $workspaceId): bool
     {
-        return WorkspaceMember::query()->where('user_id', $user->id)->where('workspace_id', $workspaceId)->where('status', UserStatus::Active)
-            ->whereHas('workspace', fn ($q) => $q->where('status', WorkspaceStatus::Active))->exists();
+        return WorkspaceMember::query()->where('user_id', $user->id)->where('workspace_id', $workspaceId)->where('status', UserStatus::Active->value)
+            ->whereHas('workspace', fn ($q) => $q->where('status', WorkspaceStatus::Active->value))->exists();
     }
 }

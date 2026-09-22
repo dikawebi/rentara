@@ -2,7 +2,20 @@
 
 namespace App\Providers;
 
+use App\Models\Block;
+use App\Models\Building;
+use App\Models\Floor;
+use App\Models\Property;
+use App\Models\PropertyAssignment;
+use App\Models\Unit;
+use App\Models\UnitType;
+use App\Policies\PropertyAssignmentPolicy;
+use App\Policies\PropertyPolicy;
+use App\Policies\StructurePolicy;
+use App\Policies\UnitPolicy;
+use App\Policies\UnitTypePolicy;
 use App\Support\CurrentWorkspace;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -20,6 +33,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Gate::policy(Property::class, PropertyPolicy::class);
+        Gate::policy(Building::class, StructurePolicy::class);
+        Gate::policy(Floor::class, StructurePolicy::class);
+        Gate::policy(Block::class, StructurePolicy::class);
+        Gate::policy(Unit::class, UnitPolicy::class);
+        Gate::policy(UnitType::class, UnitTypePolicy::class);
+        Gate::policy(PropertyAssignment::class, PropertyAssignmentPolicy::class);
     }
 }

@@ -1,8 +1,8 @@
 # Workspace foundation implementation
 
-**Status:** `RENTARA-FEAT-002` foundation, `RENTARA-FEAT-003` application shell, `RENTARA-FEAT-004` audit baseline, and `RENTARA-FEAT-005` local demo seed implemented; QA PASS recorded for all four.
+**Status:** `RENTARA-FEAT-002` foundation, `RENTARA-FEAT-003` application shell, `RENTARA-FEAT-004` audit baseline, `RENTARA-FEAT-005` local demo seed, `RENTARA-FEAT-006` property management baseline, and `RENTARA-FEAT-007` property structure/unit/assignment baseline implemented; QA PASS recorded for all six.
 
-This document describes the current, implemented identity/workspace foundation and application shell. It does not describe future property, tenancy, or invitation functionality.
+This document describes the current, implemented identity/workspace foundation, application shell, property baseline, and property structure/unit/assignment baseline. It does not describe future tenancy, billing, or invitation functionality.
 
 ## Identity and authentication
 
@@ -86,6 +86,101 @@ Allowlisted events only (`AuditLogger` constants, enforced by `AuditLog::assertP
 - Every rejected credential attempt (unknown email, inactive/suspended user, or bad password) records the single generic event `auth.login_denied` with `null` user/workspace/auditable/values, so responses do not enumerate account state.
 - Denied-login audit rows are throttled independently of the 5-attempt authentication lockout: RateLimiter key `audit:denied-login:{ip|unknown}`, max 20 per 60 seconds per IP. Bursts beyond 20/min are not recorded.
 
+## Property management baseline (`RENTARA-FEAT-006`)
+
+Implemented workspace-scoped Property CRUD. There is no building/floor/block/unit model, no property structure hierarchy, and no unit management in this scope.
+
+### Schema, enums, and relations
+
+- `properties` (`2026_09_22_000004_create_properties_table`): `id`, `workspace_id` FK (`constrained`, `cascadeOnDelete`), `name`, `property_type` enum (`kost`, `house`, `apartment`, `kios`, `ruko`, default `kost`), nullable `address` (text), nullable `city(100)`/`province(100)`, nullable `postal_code(20)`, nullable `latitude`/`longitude` (`decimal(10,7)`), nullable `phone(30)`, nullable `email`, `status` enum (`active`, `inactive`, `archived`, default `active`), nullable `created_by` FK to `users` (`nullOnDelete`), timestamps, and soft deletes. Constraints: unique `(workspace_id, name)`; indexes `(workspace_id, status)` and `(workspace_id, property_type)`.
+- Enums: `App\Enums\PropertyType` (`kost`, `house`, `apartment`, `kios`, `ruko`) and `App\Enums\PropertyStatus` (`active`, `inactive`, `archived`), cast on the model; `latitude`/`longitude` cast to `decimal:7`.
+- Relations: `Property` belongs to `Workspace` and belongs to creator (`User`, `created_by`); `Workspace` has many `Property` records; `User` has many created `Property` records. Deleting a workspace cascades to its properties; deleting a user nulls `created_by`, preserving property history.
+
+### Interim role matrix (`PropertyPolicy`, now assignment-aware under FEAT-007)
+
+- Owner: bypass — full `view`/`update`/`delete`/`restore` on any property in the workspace; property index lists all workspace properties.
+- Manager: `create` on the workspace plus assigned-only read (`view`) and `update`; `delete`/`restore` denied (403). Creating a property self-assigns the creating manager; the property index lists only assigned properties for non-owners.
+- Staff: assigned-only read-only — `view` only on assigned properties; `create`/`update`/`delete`/`restore` denied (403). The property index lists only assigned properties.
+- `super_admin`: denied on every property ability (policy `role()` returns `null` for platform role, including fail-closed legacy memberships); property routes return 403.
+- `forceDelete` always returns `false`: no permanent deletion path exists.
+- Role is the active workspace membership role in the property's workspace only; manager/staff access additionally requires a `property_assignments` row for that property (owner bypasses the assignment check).
+
+### Workspace-scoped IDOR behavior
+
+- All lookups scope by current workspace (`Property::where('workspace_id', $workspaceId)->findOrFail($id)`). Cross-workspace show/edit/update/delete returns HTTP 404 with the record untouched; trashed records are excluded from show/edit/update/delete (404) and are only reachable via restore (`withTrashed`).
+- `workspace_id` and `created_by` are assigned server-side from the current workspace and authenticated user; client-supplied `workspace_id`/`created_by` values are ignored (not validated fields).
+- Routes require `auth`, `active-user`, `verified`, and `workspace-context`. Guests redirect to `/login`; unverified users redirect to verification.
+
+### Routes and views (Indonesian)
+
+- Routes under `/app` (`app.properties.*`, `whereNumber('property')`): `GET /app/properties` (index, ordered by name, 15/page), `GET /app/properties/create`, `POST /app/properties` (store), `GET /app/properties/{property}` (show), `GET /app/properties/{property}/edit`, `PUT /app/properties/{property}` (update), `DELETE /app/properties/{property}` (destroy), `POST /app/properties/{property}/restore`.
+- Views (`resources/views/properties/`): `index` (`Daftar properti`, `Belum ada properti` empty state, `Tambah properti`, status badges `Aktif`/`Nonaktif`/`Diarsipkan`, type labels `Kost`/`Rumah`/`Apartemen`/`Kios`/`Ruko`), `create` (`Tambah properti` / `Simpan properti` / `Batal`), `edit` (`Ubah properti` / `Simpan perubahan`), `show` (detail list with `—` fallbacks, `Kembali ke daftar`, `Ubah properti`, `Hapus properti`), shared `_form` (labels `Nama properti`, `Jenis properti`, `Status`, `Alamat`, `Kota`, `Provinsi`, `Kode pos`, `Lintang (latitude)`, `Bujur (longitude)`, `Telepon`, `Surel`). Flash copy: `Properti berhasil ditambahkan.` / `Perubahan properti berhasil disimpan.` / `Properti berhasil dihapus.` / `Properti berhasil dipulihkan.`
+
+### Soft delete and owner restore
+
+- Delete is a soft delete (`SoftDeletes`); only owners may delete. After delete, show returns 404.
+- Restore (`POST .../restore`) revives a trashed record and redirects to show; only owners may restore (managers receive 403 and the record stays trashed). If an active row already uses the trashed name, restore returns HTTP 422 and the record stays trashed. Restoring a non-trashed record is a no-op redirect to show. There is no trashed listing and no force delete.
+
+### Validation summary (`PropertyController::rules`)
+
+- `name`: required, string, max 255, unique per workspace including trashed rows (`Rule::unique(...)->where(workspace_id)->ignore(id)` on update, no `whereNull(deleted_at)`); duplicate in the same workspace is rejected even when the conflicting row is trashed, keeping the record's own name on update is allowed, and the same name in another workspace is allowed.
+- `property_type` / `status`: required, must match `PropertyType` / `PropertyStatus` enums.
+- `address`: nullable string max 2000; `city`/`province`: nullable string max 100; `postal_code`: nullable string max 20; `phone`: nullable string max 30; `email`: nullable email max 255.
+- `latitude`: nullable numeric between -90 and 90; `longitude`: nullable numeric between -180 and 180.
+
+### Exclusions (FEAT-007 implements structure/units/assignments below)
+
+- No property audit events (property writes are outside the `RENTARA-FEAT-004` allowlisted events).
+- No trashed-property listing, no force delete.
+- No amenities/media (deferred to `RENTARA-FEAT-008`).
+
+### Known non-blocking edges (FEAT-006 baseline)
+
+- Trashed-name reuse (FEAT-006 only, resolved by FEAT-007): FEAT-006 form validation scoped uniqueness to non-deleted rows, so a trashed name passed validation, while the database unique `(workspace_id, name)` still covered trashed rows. FEAT-007 validation now includes trashed rows and restore returns 422 on conflict.
+- Quote-name confirm: the delete `confirm('Hapus properti {{ $property->name }}? ...')` interpolates the raw name, so a name containing a single quote can break the inline confirm dialog.
+- `@can` affordances: `Tambah`/`Ubah`/`Hapus` links and buttons render unconditionally (no `@can` gating); unauthorized roles see the affordance and are denied server-side by the policy (403). Authorization itself is not weakened.
+
+## Property structure, unit types, units, and assignments (`RENTARA-FEAT-007`)
+
+Implemented property structure hierarchy, unit-type catalog, unit inventory, and property-level assignments. There are no amenities/media in this scope (deferred to `RENTARA-FEAT-008`).
+
+### Schema, enums, and relations
+
+- `buildings` / `floors` / `blocks` (`2026_09_22_000005`): `id`, `workspace_id` FK (`cascadeOnDelete`), `property_id` FK (`cascadeOnDelete`), `name`, `sort_order` (unsigned, default `0`), nullable `notes`, timestamps, soft deletes. Constraints per table: unique `(property_id, name)`; index `(workspace_id, property_id)`.
+- `unit_types` (`2026_09_22_000006`, workspace-level): `id`, `workspace_id` FK (`cascadeOnDelete`), `name`, nullable `description`, nullable `default_capacity` (unsigned), timestamps, soft deletes. Constraints: unique `(workspace_id, name)`; index `(workspace_id)`.
+- `units` (`2026_09_22_000007`, full handoff columns): `id`, `workspace_id` FK (`cascadeOnDelete`), `property_id` FK (`cascadeOnDelete`), nullable `building_id`/`floor_id`/`block_id` (`nullOnDelete`), nullable `unit_type_id` (`nullOnDelete`), `unit_number`, nullable `name`, nullable `area` (`decimal(8,2)`), `rental_price` (unsigned bigint), `rental_period` enum (default `monthly`), `capacity` (unsigned, default `1`), `status` enum (default `available`), timestamps, soft deletes. Constraints: unique `(property_id, unit_number)`; indexes `(workspace_id, property_id)` and `(property_id, status)`.
+- Enums: `App\Enums\UnitStatus` (`available`, `occupied`, `maintenance`) and `App\Enums\RentalPeriod` (`daily`, `monthly`, `yearly`), cast on `Unit`; `area` cast `decimal:2`, `rental_price`/`capacity` integers.
+- `property_assignments` (`2026_09_22_000008`): `id`, `workspace_id` FK (`cascadeOnDelete`), `property_id` FK (`cascadeOnDelete`), `user_id` FK (`cascadeOnDelete`), nullable `created_by` FK to `users` (`nullOnDelete`), timestamps (no soft deletes). Constraints: unique `(property_id, user_id)`; indexes `(workspace_id, user_id)` and `(property_id)`.
+- Relations: structures and units belong to workspace/property (units optionally belong to building/floor/block/unit type); `Property` show counts `units`/`buildings`/`floors`/`blocks`/`assignments`. Deleting a workspace/property cascades; deleting a referenced structure/unit-type nulls the unit FK; deleting a user nulls assignment `created_by` (assignments themselves cascade on user delete).
+
+### Per-property duplicate rules including trashed-reuse rejection
+
+- Structures: `name` required max 255, unique per property including trashed rows (`Rule::unique(...)->where(property_id)->ignore(id)`); same name in another property is allowed. Message: `Nama gedung/lantai/blok sudah digunakan pada properti ini (termasuk data yang telah dihapus).`
+- Unit types: `name` required max 255, unique per workspace including trashed rows; same name in another workspace is allowed. Message: `Nama tipe unit sudah digunakan di ruang kerja ini (termasuk data yang telah dihapus).`
+- Units: `unit_number` required max 50, unique per property including trashed rows; same number in another property is allowed. Message: `Nomor unit sudah digunakan pada properti ini (termasuk data yang telah dihapus).` Properties likewise validate `name` unique per workspace including trashed rows.
+- Sibling-FK same-property validation: optional `building_id`/`floor_id`/`block_id` must exist and belong to the same `property_id` (Indonesian failures); optional `unit_type_id` must exist and belong to the same `workspace_id`.
+- Unit field rules: `name` nullable max 255; `area` nullable numeric `0–999999.99`; `rental_price` required integer `0–999999999999`; `rental_period` required `RentalPeriod` enum; `capacity` nullable integer `1–100` (defaults to `1` on store); `status` nullable `UnitStatus` enum (defaults to `available` on store). `workspace_id`/`property_id` are assigned server-side.
+- Restore conflict returns HTTP 422 and leaves the record trashed when an active row already uses the trashed name/number (`Property`, `Building`, `Floor`, `Block`, `UnitType`, `Unit` restore actions); restoring a non-trashed record is a no-op redirect. There is no trashed listing and `forceDelete` always returns `false`.
+
+### Property assignments, backfill, and owner-only management
+
+- Migration `2026_09_22_000008` runs `BackfillPropertyAssignments` inline: idempotent (`insertOrIgnore`) assignment of every active manager/staff member (active user, non-`super_admin`) to every non-trashed property in the same workspace; suspended memberships are skipped and owner rows are never created.
+- Creating a property as manager self-assigns the creator (`PropertyAssignment` with server-side `workspace_id`/`property_id`/`created_by`).
+- Assignment management is owner-only: `PropertyAssignmentPolicy::create`/`delete` require the workspace `owner` role (`update`/`restore`/`forceDelete` always `false`). Store candidates are limited to active, non-`super_admin` users with an active manager/staff membership in the property's workspace and no existing row for the property; duplicate `user_id` per property and inactive/ineligible users are rejected (Indonesian messages). Index lists assignments with `user`/`creator` (15/page).
+
+### Assignment-aware authorization matrix
+
+- Shared base `PropertyScopedPolicy`: `super_admin` maps to `null` role (denied everywhere); only active membership roles count; owner bypasses the assignment check while manager/staff require an existing `property_assignments` row for the property.
+- Property (`PropertyPolicy`): owner full (`view`/`update`/`delete`/`restore`, all-workspace index); manager workspace `create` plus assigned-only `view`/`update` (assigned-only index); staff assigned-only `view` (assigned-only index); `super_admin` denied.
+- Structures/units (`StructurePolicy`, `UnitPolicy`): `viewAny`/`view` for owner plus assigned manager/staff; `create`/`update`/`delete`/`restore` for owner plus assigned manager only (staff read-only); `super_admin` denied. All lookups scope by current workspace and property (`workspace_id` + `property_id`, `findOrFail` → 404 cross-scope).
+- Unit types (`UnitTypePolicy`, workspace-level, no assignments): any active member may `viewAny`/`view`; owner/manager may `create`/`update`/`delete`/`restore`; staff read-only; `super_admin` denied.
+- Assignments (`PropertyAssignmentPolicy`): `viewAny`/`view` mirror property view (owner plus assigned manager/staff); `create`/`delete` owner-only.
+
+### Exclusions (deferred to `RENTARA-FEAT-008`)
+
+- No amenities/media models, relations, CRUD, validation, or seed data are implemented or claimed.
+- No property/structure/unit audit events, no trashed listings, no force delete.
+
 ## Demo seed (`RENTARA-FEAT-005`)
 
 Local-only demo data via `database/seeders/RentaraDemoSeeder.php`, invoked by `DatabaseSeeder` in non-production environments. Run with `php artisan db:seed` (after migrate) in local/testing only; never in production.
@@ -106,7 +201,7 @@ Promotion to Super Admin is rejected for any user who has a workspace membership
 
 ## Known limitations
 
-There is no tenant shell or tenant portal, dashboard metrics, notification delivery or inbox, interactive workspace-switch UI, property action or property-management workflow, property/unit/tenant/billing module, platform review workflow, ownership transfer, co-owner model, invitation workflow, or property-level assignment in this scope. The shell's dashboard values and relevant controls are placeholders only. The demo seed likewise contains no tenant demo account and no Property/Unit/invitation data (deferred).
+There is no tenant shell or tenant portal, dashboard metrics, notification delivery or inbox, interactive workspace-switch UI, tenant/billing module, platform review workflow, ownership transfer, co-owner model, or invitation workflow in this scope. Property scope is the FEAT-006 baseline plus the FEAT-007 structure/unit/assignment baseline above: no amenities/media (deferred to FEAT-008), no trashed listing, no force delete, and no property audit events. The shell's dashboard values and relevant controls are placeholders only. The demo seed likewise contains no tenant demo account and no Property/Unit/invitation data (deferred).
 
 Audit scope is limited to the baseline above: there is no audit viewer, listing/search/export API, retention/purge job, queued/async audit path, or audit coverage for password reset/confirmation, email verification, profile updates, workspace settings, or workspace switching. Denied-login auditing is sampled under burst traffic (20/min per IP). No audit package or Spatie Permission package is installed.
 
@@ -118,4 +213,4 @@ The audit migration (`2026_09_21_000003`) creates `audit_logs` only; it does not
 
 ## Test evidence
 
-QA PASS was provided for `RENTARA-FEAT-002`, `RENTARA-FEAT-003`, `RENTARA-FEAT-004`, and `RENTARA-FEAT-005`. Verification on 2026-09-21 passed: `php artisan test` reported **71 tests passed, 319 assertions** (including `DemoSeederTest`: **3 passed, 35 assertions**); `npm run build` completed successfully. Coverage includes identity status and login behavior, verification, atomic registration/rollback, membership uniqueness and lifecycle, canonical-owner protection, workspace selection/switching and stale/deleted cleanup, server-side workspace scoping, Super Admin containment, fail-closed legacy-membership policy behavior, configured branding, shell placeholders, dashboard authorization, shell accessibility markup, the audit baseline: same-transaction registration/member/login-success writes with rollback on audit failure, generic IP-bounded denied-login auditing without secrets or account-state enumeration, logout/platform-dashboard writes, safe old/new values, UA normalization and credential-like UA discard, Eloquent fingerprint rejection with logger-only persistence, and factory/logger safe-record behavior, plus demo-seed creation, idempotent rerun, and demo-owner login.
+QA PASS was provided for `RENTARA-FEAT-002`, `RENTARA-FEAT-003`, `RENTARA-FEAT-004`, `RENTARA-FEAT-005`, `RENTARA-FEAT-006`, and `RENTARA-FEAT-007`. Verification for FEAT-007 passed: `php artisan test` reported **120 tests passed, 618 assertions**; `npm run build` completed successfully. Coverage includes identity status and login behavior, verification, atomic registration/rollback, membership uniqueness and lifecycle, canonical-owner protection, workspace selection/switching and stale/deleted cleanup, server-side workspace scoping, Super Admin containment, fail-closed legacy-membership policy behavior, configured branding, shell placeholders, dashboard authorization, shell accessibility markup, the audit baseline: same-transaction registration/member/login-success writes with rollback on audit failure, generic IP-bounded denied-login auditing without secrets or account-state enumeration, logout/platform-dashboard writes, safe old/new values, UA normalization and credential-like UA discard, Eloquent fingerprint rejection with logger-only persistence, and factory/logger safe-record behavior, demo-seed creation, idempotent rerun, and demo-owner login, plus property CRUD: owner happy path with server-side `created_by`/`workspace_id`, validation (missing name, invalid enums, bad coordinates/email), per-workspace name uniqueness and update keep-own-name, cross-workspace 404 IDOR scoping, assignment-aware role matrix (owner bypass, assigned-only manager/staff, staff read-only, `super_admin` denied), owner-only soft-delete restore with 422 restore conflict, guest/unverified guards, and the Indonesian empty state, plus FEAT-007 structures/unit-types/units/assignments: per-property and per-workspace duplicate rules including trashed-reuse rejection, sibling-FK same-property/workspace validation, scoped workspace/property lookups and indexes, manager self-assign on property create, migration backfill idempotency, and owner-only assignment management. No amenities/media coverage is claimed. Earlier verification on 2026-09-21 (FEAT-002–005) reported **71 tests passed, 319 assertions** (including `DemoSeederTest`: **3 passed, 35 assertions**); FEAT-006 verification reported **82 tests passed, 388 assertions** (including `PropertyTest`: **11 passed, 69 assertions**).

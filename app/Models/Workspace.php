@@ -28,6 +28,41 @@ class Workspace extends Model
         return $this->hasMany(WorkspaceMember::class);
     }
 
+    public function properties()
+    {
+        return $this->hasMany(Property::class);
+    }
+
+    public function buildings()
+    {
+        return $this->hasMany(Building::class);
+    }
+
+    public function floors()
+    {
+        return $this->hasMany(Floor::class);
+    }
+
+    public function blocks()
+    {
+        return $this->hasMany(Block::class);
+    }
+
+    public function unitTypes()
+    {
+        return $this->hasMany(UnitType::class);
+    }
+
+    public function units()
+    {
+        return $this->hasMany(Unit::class);
+    }
+
+    public function propertyAssignments()
+    {
+        return $this->hasMany(PropertyAssignment::class);
+    }
+
     public function auditLogs()
     {
         return $this->hasMany(AuditLog::class);
