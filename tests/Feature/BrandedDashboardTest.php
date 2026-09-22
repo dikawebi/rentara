@@ -13,7 +13,7 @@ class BrandedDashboardTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_operational_dashboard_renders_configured_brand_and_release_placeholders(): void
+    public function test_operational_dashboard_renders_configured_brand_and_accurate_feature_status(): void
     {
         config()->set('app.brand.name', 'Configured Brand');
         $user = User::factory()->create();
@@ -27,7 +27,13 @@ class BrandedDashboardTest extends TestCase
             ->assertSee('Properti')
             ->assertSee('Tagihan tertunda')
             ->assertSee($workspace->name)
-            ->assertSee('Tambah properti · Rilis 1')
+            ->assertSee('Kelola properti')
+            ->assertSee('href="'.route('app.properties.index').'"', false)
+            ->assertSee('Properti dapat dikelola sekarang.')
+            ->assertSee('Unit dapat dikelola sekarang.')
+            ->assertSee('Penyewa akan tersedia pada rilis berikutnya.')
+            ->assertSee('Tagihan tertunda akan tersedia pada rilis berikutnya.')
+            ->assertDontSee('Rilis 1')
             ->assertSee('brightness-0 invert')
             ->assertSee('id="profile-navigation"', false)
             ->assertDontSee('role="menu"', false)
