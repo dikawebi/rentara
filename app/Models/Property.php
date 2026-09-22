@@ -77,4 +77,9 @@ class Property extends Model
     {
         return $this->belongsToMany(User::class, 'property_assignments')->withTimestamps();
     }
+
+    public function media()
+    {
+        return $this->hasMany(Media::class);
+    }
 }

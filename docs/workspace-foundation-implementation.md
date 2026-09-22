@@ -1,8 +1,8 @@
 # Workspace foundation implementation
 
-**Status:** `RENTARA-FEAT-002` foundation, `RENTARA-FEAT-003` application shell, `RENTARA-FEAT-004` audit baseline, `RENTARA-FEAT-005` local demo seed, `RENTARA-FEAT-006` property management baseline, and `RENTARA-FEAT-007` property structure/unit/assignment baseline implemented; QA PASS recorded for all six.
+**Status:** `RENTARA-FEAT-002` foundation, `RENTARA-FEAT-003` application shell, `RENTARA-FEAT-004` audit baseline, `RENTARA-FEAT-005` local demo seed, `RENTARA-FEAT-006` property management baseline, `RENTARA-FEAT-007` property structure/unit/assignment baseline, and `RENTARA-FEAT-008` amenity/media baseline implemented; QA PASS recorded for all seven.
 
-This document describes the current, implemented identity/workspace foundation, application shell, property baseline, and property structure/unit/assignment baseline. It does not describe future tenancy, billing, or invitation functionality.
+This document describes the current, implemented identity/workspace foundation, application shell, property baseline, property structure/unit/assignment baseline, and amenity/private-media baseline. It does not describe future tenancy, tenant documents, messaging, marketplace, billing, or invitation functionality.
 
 ## Identity and authentication
 
@@ -132,7 +132,7 @@ Implemented workspace-scoped Property CRUD. There is no building/floor/block/uni
 
 - No property audit events (property writes are outside the `RENTARA-FEAT-004` allowlisted events).
 - No trashed-property listing, no force delete.
-- No amenities/media (deferred to `RENTARA-FEAT-008`).
+- Amenities and media were outside the FEAT-006 property CRUD baseline; they are implemented in the FEAT-008 section below.
 
 ### Known non-blocking edges (FEAT-006 baseline)
 
@@ -142,7 +142,7 @@ Implemented workspace-scoped Property CRUD. There is no building/floor/block/uni
 
 ## Property structure, unit types, units, and assignments (`RENTARA-FEAT-007`)
 
-Implemented property structure hierarchy, unit-type catalog, unit inventory, and property-level assignments. There are no amenities/media in this scope (deferred to `RENTARA-FEAT-008`).
+Implemented property structure hierarchy, unit-type catalog, unit inventory, and property-level assignments. Amenity/private-media behavior is documented in the FEAT-008 section below.
 
 ### Schema, enums, and relations
 
@@ -176,10 +176,32 @@ Implemented property structure hierarchy, unit-type catalog, unit inventory, and
 - Unit types (`UnitTypePolicy`, workspace-level, no assignments): any active member may `viewAny`/`view`; owner/manager may `create`/`update`/`delete`/`restore`; staff read-only; `super_admin` denied.
 - Assignments (`PropertyAssignmentPolicy`): `viewAny`/`view` mirror property view (owner plus assigned manager/staff); `create`/`delete` owner-only.
 
-### Exclusions (deferred to `RENTARA-FEAT-008`)
+### Exclusions
 
-- No amenities/media models, relations, CRUD, validation, or seed data are implemented or claimed.
-- No property/structure/unit audit events, no trashed listings, no force delete.
+- No property/structure/unit audit events, no amenity/media audit events, no trashed listings, and no force delete.
+
+## Amenities and private property/unit media (`RENTARA-FEAT-008`)
+
+FEAT-008 implements a workspace-scoped amenity catalog and private images for active properties and units. It does not implement tenant documents, messaging, marketplace/public media, image processing, or cloud storage.
+
+### Amenities and unit assignments
+
+- `amenities` (`2026_09_22_000009`) stores `workspace_id`, `name`, optional `description`, `created_by`, timestamps, and soft deletes. Names are unique per workspace; an active amenity may be assigned to any unit in the same workspace through `amenity_unit`.
+- `amenity_unit` (`2026_09_22_000010`) stores `workspace_id`, `amenity_id`, `unit_id`, `created_by`, and timestamps. The composite foreign keys require the amenity and unit to belong to the pivot workspace, and `(amenity_id, unit_id)` is unique. Cross-workspace IDs and deleted amenities are rejected; syncing replaces the unit's current amenity set transactionally.
+- All active workspace members may read the amenity catalog. Owners and managers may create, update, soft-delete, and restore amenities; staff is read-only; `super_admin` is denied. Unit amenity editing follows the unit/property policy: owners and assigned managers may write, while assigned staff may read only.
+- Amenity deletion is soft deletion and does not delete the unit assignment rows. Restore is owner/manager-authorized and returns 422 when an active amenity already uses the name. There is no trashed-amenity listing or force delete.
+
+### Private media model and behavior
+
+- `media` (`2026_09_22_000011`) stores `workspace_id` and exactly one parent: `property_id` or `unit_id` (database XOR check). Composite foreign keys enforce that the parent belongs to the same workspace; deleting a workspace/property/unit cascades its media rows. A unit media record therefore also belongs to its unit's property.
+- Uploads accept only JPG/JPEG/PNG/WEBP images and are limited to 10,240 KB (10 MB). Files use the `local` private disk and are written under `workspaces/{workspace}/properties/{property}/media/` or `workspaces/{workspace}/units/{unit}/media/`, with a generated UUID filename rather than the original filename. The database records original name, detected MIME type, extension, byte size, SHA-256 checksum, caption, ordering, and uploader.
+- Media is never exposed as a public URL. The stream route first scopes the row to the current workspace, validates the active property/unit parent and UUID path layout, checks the file's detected MIME type, and authorizes the viewer. It returns the file inline with `X-Content-Type-Options: nosniff`; unauthorized, cross-workspace, inactive-parent, missing, tampered-path, and unsupported-content requests are denied/not found.
+- Owner can view/upload/delete media for the workspace's properties. An assigned manager can view/upload/delete, and an assigned staff member can view only. Unassigned members and `super_admin` are denied. Property and unit media use the same assignment-aware property scope.
+- If storage fails before the row is created, the upload cleanup path attempts to remove the file and no media row remains. Delete removes the database row before attempting physical-file deletion; a disk-cleanup failure is logged and reported as a server error, so the row is not retained as a retry queue. There is no background cleanup job or image transformation.
+
+### Integrity and audit boundary
+
+Workspace/property scoping is applied to every catalog, assignment, upload, stream, and delete lookup. Database constraints supplement policy checks for workspace-parent identity, one media parent, and unique amenity-unit pairs. FEAT-008 does not add audit events; amenity and media writes remain outside the allowlisted audit baseline.
 
 ## Demo seed (`RENTARA-FEAT-005`)
 
@@ -201,16 +223,18 @@ Promotion to Super Admin is rejected for any user who has a workspace membership
 
 ## Known limitations
 
-There is no tenant shell or tenant portal, dashboard metrics, notification delivery or inbox, interactive workspace-switch UI, tenant/billing module, platform review workflow, ownership transfer, co-owner model, or invitation workflow in this scope. Property scope is the FEAT-006 baseline plus the FEAT-007 structure/unit/assignment baseline above: no amenities/media (deferred to FEAT-008), no trashed listing, no force delete, and no property audit events. The shell's dashboard values and relevant controls are placeholders only. The demo seed likewise contains no tenant demo account and no Property/Unit/invitation data (deferred).
+There is no tenant shell or tenant portal, tenant documents, messaging, marketplace, dashboard metrics, notification delivery or inbox, interactive workspace-switch UI, tenant/billing module, platform review workflow, ownership transfer, co-owner model, or invitation workflow in this scope. Property scope is the FEAT-006 baseline plus the FEAT-007 structure/unit/assignment and FEAT-008 amenity/private-media baselines above: no public media, image processing, cloud storage, trashed listing, force delete, or property/amenity/media audit events. The shell's dashboard values and relevant controls are placeholders only. The demo seed likewise contains no tenant demo account or invitation data.
 
 Audit scope is limited to the baseline above: there is no audit viewer, listing/search/export API, retention/purge job, queued/async audit path, or audit coverage for password reset/confirmation, email verification, profile updates, workspace settings, or workspace switching. Denied-login auditing is sampled under burst traffic (20/min per IP). No audit package or Spatie Permission package is installed.
 
 ## Existing-deployment migration note
 
-The migrations add the identity columns and create `workspaces` and `workspace_members`; they do not create a workspace or membership for pre-existing users, assign Super Admins, or repair/delete legacy data. Before deploying to an existing environment, back up the database, rehearse the migration on representative data, and decide which existing active users require a workspace and active membership. Until valid membership data exists, a verified non-Super-Admin user receives the no-active-workspace response on workspace routes. Run production migrations only through the reviewed deployment process (for example, `php artisan migrate --force`).
+The migrations add the identity columns and create `workspaces` and `workspace_members`; later migrations create the property, structure/unit, assignment, amenity, pivot, and media tables. They do not create a workspace or membership for pre-existing users, assign Super Admins, backfill amenities/media, or repair/delete legacy data. Before deploying to an existing environment, back up the database, rehearse all migrations on representative data, verify local private-disk storage permissions, and decide which existing active users require a workspace and active membership. Until valid membership data exists, a verified non-Super-Admin user receives the no-active-workspace response on workspace routes. Run production migrations only through the reviewed deployment process (for example, `php artisan migrate --force`).
 
 The audit migration (`2026_09_21_000003`) creates `audit_logs` only; it does not backfill history for pre-existing users, workspaces, memberships, or past authentication events. Existing deployments start with an empty audit trail from migration time onward.
 
 ## Test evidence
 
-QA PASS was provided for `RENTARA-FEAT-002`, `RENTARA-FEAT-003`, `RENTARA-FEAT-004`, `RENTARA-FEAT-005`, `RENTARA-FEAT-006`, and `RENTARA-FEAT-007`. Verification for FEAT-007 passed: `php artisan test` reported **120 tests passed, 618 assertions**; `npm run build` completed successfully. Coverage includes identity status and login behavior, verification, atomic registration/rollback, membership uniqueness and lifecycle, canonical-owner protection, workspace selection/switching and stale/deleted cleanup, server-side workspace scoping, Super Admin containment, fail-closed legacy-membership policy behavior, configured branding, shell placeholders, dashboard authorization, shell accessibility markup, the audit baseline: same-transaction registration/member/login-success writes with rollback on audit failure, generic IP-bounded denied-login auditing without secrets or account-state enumeration, logout/platform-dashboard writes, safe old/new values, UA normalization and credential-like UA discard, Eloquent fingerprint rejection with logger-only persistence, and factory/logger safe-record behavior, demo-seed creation, idempotent rerun, and demo-owner login, plus property CRUD: owner happy path with server-side `created_by`/`workspace_id`, validation (missing name, invalid enums, bad coordinates/email), per-workspace name uniqueness and update keep-own-name, cross-workspace 404 IDOR scoping, assignment-aware role matrix (owner bypass, assigned-only manager/staff, staff read-only, `super_admin` denied), owner-only soft-delete restore with 422 restore conflict, guest/unverified guards, and the Indonesian empty state, plus FEAT-007 structures/unit-types/units/assignments: per-property and per-workspace duplicate rules including trashed-reuse rejection, sibling-FK same-property/workspace validation, scoped workspace/property lookups and indexes, manager self-assign on property create, migration backfill idempotency, and owner-only assignment management. No amenities/media coverage is claimed. Earlier verification on 2026-09-21 (FEAT-002–005) reported **71 tests passed, 319 assertions** (including `DemoSeederTest`: **3 passed, 35 assertions**); FEAT-006 verification reported **82 tests passed, 388 assertions** (including `PropertyTest`: **11 passed, 69 assertions**).
+QA PASS was recorded for `RENTARA-FEAT-008`. The current verification run passed: `php artisan test` reported **131 tests passed, 658 assertions**; `npm run build` completed successfully. Coverage includes workspace-scoped amenity CRUD/restore, same-workspace unit assignment and pivot integrity, role restrictions, private property/unit image upload and authorized streaming, UUID path handling, image type/10 MB validation, private local storage, `nosniff`, cleanup/error paths, parent/workspace isolation, and media deletion. No public-media, cloud-storage, or image-processing behavior is claimed.
+
+QA PASS was provided for `RENTARA-FEAT-002`, `RENTARA-FEAT-003`, `RENTARA-FEAT-004`, `RENTARA-FEAT-005`, `RENTARA-FEAT-006`, and `RENTARA-FEAT-007`. Verification for FEAT-007 passed: `php artisan test` reported **120 tests passed, 618 assertions**; `npm run build` completed successfully. Coverage includes identity status and login behavior, verification, atomic registration/rollback, membership uniqueness and lifecycle, canonical-owner protection, workspace selection/switching and stale/deleted cleanup, server-side workspace scoping, Super Admin containment, fail-closed legacy-membership policy behavior, configured branding, shell placeholders, dashboard authorization, shell accessibility markup, the audit baseline: same-transaction registration/member/login-success writes with rollback on audit failure, generic IP-bounded denied-login auditing without secrets or account-state enumeration, logout/platform-dashboard writes, safe old/new values, UA normalization and credential-like UA discard, Eloquent fingerprint rejection with logger-only persistence, and factory/logger safe-record behavior, demo-seed creation, idempotent rerun, and demo-owner login, plus property CRUD: owner happy path with server-side `created_by`/`workspace_id`, validation (missing name, invalid enums, bad coordinates/email), per-workspace name uniqueness and update keep-own-name, cross-workspace 404 IDOR scoping, assignment-aware role matrix (owner bypass, assigned-only manager/staff, staff read-only, `super_admin` denied), owner-only soft-delete restore with 422 restore conflict, guest/unverified guards, and the Indonesian empty state, plus FEAT-007 structures/unit-types/units/assignments: per-property and per-workspace duplicate rules including trashed-reuse rejection, sibling-FK same-property/workspace validation, scoped workspace/property lookups and indexes, manager self-assign on property create, migration backfill idempotency, and owner-only assignment management. This FEAT-007 run predates FEAT-008 and did not include amenity/media coverage. Earlier verification on 2026-09-21 (FEAT-002–005) reported **71 tests passed, 319 assertions** (including `DemoSeederTest`: **3 passed, 35 assertions**); FEAT-006 verification reported **82 tests passed, 388 assertions** (including `PropertyTest`: **11 passed, 69 assertions**).

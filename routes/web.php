@@ -9,6 +9,9 @@ use App\Http\Controllers\UnitController;
 use App\Http\Controllers\UnitTypeController;
 use App\Http\Controllers\WorkspaceController;
 use App\Http\Controllers\WorkspaceMemberController;
+use App\Http\Controllers\AmenityController;
+use App\Http\Controllers\MediaController;
+use App\Http\Controllers\UnitAmenityController;
 use App\Support\PostAuthenticationRedirect;
 use Illuminate\Support\Facades\Route;
 
@@ -43,6 +46,14 @@ Route::middleware(['auth', 'active-user', 'verified', 'workspace-context'])->pre
     Route::post('properties/{property}/units/{unit}/restore', [UnitController::class, 'restore'])->whereNumber(['property', 'unit'])->name('properties.units.restore');
     Route::resource('unit-types', UnitTypeController::class)->except(['show'])->whereNumber('unit_type');
     Route::post('unit-types/{unit_type}/restore', [UnitTypeController::class, 'restore'])->whereNumber('unit_type')->name('unit-types.restore');
+    Route::resource('amenities', AmenityController::class)->except(['show'])->whereNumber('amenity');
+    Route::post('amenities/{amenity}/restore', [AmenityController::class, 'restore'])->whereNumber('amenity')->name('amenities.restore');
+    Route::get('properties/{property}/units/{unit}/amenities/edit', [UnitAmenityController::class, 'edit'])->whereNumber(['property', 'unit'])->name('properties.units.amenities.edit');
+    Route::put('properties/{property}/units/{unit}/amenities', [UnitAmenityController::class, 'update'])->whereNumber(['property', 'unit'])->name('properties.units.amenities.update');
+    Route::get('properties/{property}/media/{unit?}', [MediaController::class, 'index'])->whereNumber(['property', 'unit'])->name('properties.media.index');
+    Route::post('properties/{property}/media/{unit?}', [MediaController::class, 'store'])->whereNumber(['property', 'unit'])->name('properties.media.store');
+    Route::get('media/{media}', [MediaController::class, 'stream'])->whereNumber('media')->name('media.stream');
+    Route::delete('media/{media}', [MediaController::class, 'destroy'])->whereNumber('media')->name('media.destroy');
     Route::get('properties/{property}/assignments', [PropertyAssignmentController::class, 'index'])->whereNumber('property')->name('properties.assignments.index');
     Route::post('properties/{property}/assignments', [PropertyAssignmentController::class, 'store'])->whereNumber('property')->name('properties.assignments.store');
     Route::delete('properties/{property}/assignments/{assignment}', [PropertyAssignmentController::class, 'destroy'])->whereNumber(['property', 'assignment'])->name('properties.assignments.destroy');

@@ -26,6 +26,7 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
             $table->unique(['property_id', 'unit_number']);
+            $table->unique(['workspace_id', 'id']);
             $table->index(['workspace_id', 'property_id']);
             $table->index(['property_id', 'status']);
         });

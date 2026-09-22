@@ -68,4 +68,16 @@ class Unit extends Model
     {
         return $this->belongsTo(UnitType::class);
     }
+
+    public function amenities()
+    {
+        return $this->belongsToMany(Amenity::class, 'amenity_unit')
+            ->withPivot('workspace_id', 'created_by')
+            ->withTimestamps();
+    }
+
+    public function media()
+    {
+        return $this->hasMany(Media::class);
+    }
 }

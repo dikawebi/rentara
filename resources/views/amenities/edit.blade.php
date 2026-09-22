@@ -1,0 +1,1 @@
+<x-app-layout><div class="mx-auto max-w-2xl px-4 py-8 sm:px-6 lg:px-8"><h1 class="rentara-page-title">Ubah fasilitas</h1><form class="rentara-card mt-6 space-y-5 p-6" method="POST" action="{{ route('app.amenities.update', $amenity) }}">@csrf @method('PUT') @include('amenities._form')</form></div></x-app-layout>

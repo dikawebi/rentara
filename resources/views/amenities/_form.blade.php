@@ -1,0 +1,3 @@
+<div><label class="text-sm font-semibold" for="name">Nama</label><input class="mt-1 block w-full rounded-lg border-slate-300" id="name" name="name" value="{{ old('name', $amenity?->name) }}" required>@error('name')<p class="text-sm text-red-700">{{ $message }}</p>@enderror</div>
+<div><label class="text-sm font-semibold" for="description">Deskripsi</label><textarea class="mt-1 block w-full rounded-lg border-slate-300" id="description" name="description">{{ old('description', $amenity?->description) }}</textarea></div>
+<button class="rounded-lg bg-rentara-blue px-4 py-2.5 text-sm font-semibold text-white">Simpan</button>

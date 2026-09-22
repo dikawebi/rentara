@@ -67,4 +67,14 @@ class Workspace extends Model
     {
         return $this->hasMany(AuditLog::class);
     }
+
+    public function amenities()
+    {
+        return $this->hasMany(Amenity::class);
+    }
+
+    public function media()
+    {
+        return $this->hasMany(Media::class);
+    }
 }
