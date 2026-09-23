@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use App\Enums\UserStatus;
 use App\Enums\WorkspaceMemberRole;
 use App\Enums\ContractStatus;
+use App\Enums\InvoiceStatus;
 use DateTimeImmutable;
 use DateTimeInterface;
 use InvalidArgumentException;
@@ -18,6 +19,9 @@ use InvalidArgumentException;
 /** Internal, allowlist-only audit writer. It never accepts request payloads. */
 class AuditLogger
 {
+    /** ASCII invoice references: bounded, non-whitespace, and safe for audit JSON. */
+    public const INVOICE_NUMBER_PATTERN = '/\A[A-Za-z0-9](?:[A-Za-z0-9._\/-]{0,98}[A-Za-z0-9])?\z/';
+
     public const REGISTRATION = 'identity.registered';
     public const WORKSPACE_CREATED = 'workspace.created';
     public const LOGIN_SUCCEEDED = 'auth.login_succeeded';
@@ -40,6 +44,33 @@ class AuditLogger
     public const CONTRACT_TENANT_ATTACHED = 'contract.tenant_attached';
     public const CONTRACT_RESTORED = 'contract.restored';
     public const CONTRACT_DELETED = 'contract.deleted';
+    public const INVOICE_CREATED = 'invoice.created';
+    public const INVOICE_UPDATED = 'invoice.updated';
+    public const INVOICE_PAYMENT_RECORDED = 'invoice.payment_recorded';
+
+    public function invoiceEvent(string $event, ?User $actor, \App\Models\Invoice $invoice, ?array $old = null, ?array $new = null): void
+    { $this->write($event, $actor, $invoice->workspace, $invoice, $old, $new); }
+
+    /** Return only the bounded, non-PII invoice fields needed to reconstruct a mutation. */
+    public function invoiceValues(\App\Models\Invoice $invoice): array
+    {
+        return [
+            'invoice_id' => (int) $invoice->id,
+            'contract_id' => (int) $invoice->contract_id,
+            'tenant_id' => (int) $invoice->tenant_id,
+            'property_id' => (int) $invoice->property_id,
+            'unit_id' => (int) ($invoice->contract?->unit_id ?? 0),
+            'status' => $invoice->status->value,
+            'amount' => (int) $invoice->amount,
+            'currency' => (string) $invoice->currency,
+            'invoice_number' => (string) $invoice->invoice_number,
+            'period_start' => $invoice->period_start?->toDateString(),
+            'period_end' => $invoice->period_end?->toDateString(),
+            'due_date' => $invoice->due_date?->toDateString(),
+            'paid_date' => $invoice->paid_date?->toDateString(),
+            'payment_method' => $invoice->payment_method,
+        ];
+    }
 
     public function contractStatusChanged(?User $actor, \App\Models\RentalContract $contract, ContractStatus $old): void
     {
@@ -153,24 +184,29 @@ class AuditLogger
     public function assertSafeValues(?array $values): void
     {
         foreach ($values ?? [] as $key => $value) {
-             if (! in_array($key, ['user_id', 'workspace_id', 'member_id', 'contract_id', 'tenant_id', 'unit_id', 'property_id', 'check_in_id', 'check_out_id', 'role', 'status', 'last_login_at'], true)) {
+             if (! in_array($key, ['user_id', 'workspace_id', 'member_id', 'contract_id', 'tenant_id', 'unit_id', 'property_id', 'check_in_id', 'check_out_id', 'invoice_id', 'role', 'status', 'last_login_at', 'payment_date', 'payment_method', 'paid_date', 'amount', 'currency', 'invoice_number', 'period_start', 'period_end', 'due_date'], true)) {
                 throw new InvalidArgumentException('Only allowlisted audit values can be recorded.');
             }
             if (preg_match('/password|token|remember|api[_-]?key|credential|document|content|path/i', (string) $key) || (is_string($value) && preg_match('/password|token|remember|api[_-]?key|credential|document|content|path|secret|bearer/i', $value))) {
                 throw new InvalidArgumentException('Secret or raw document fields cannot be audited.');
             }
-             if (in_array($key, ['user_id', 'workspace_id', 'member_id', 'contract_id', 'tenant_id', 'unit_id', 'property_id', 'check_in_id', 'check_out_id'], true) && (! is_int($value) || $value < 1)) {
+             if (in_array($key, ['user_id', 'workspace_id', 'member_id', 'contract_id', 'tenant_id', 'unit_id', 'property_id', 'check_in_id', 'check_out_id', 'invoice_id'], true) && (! is_int($value) || $value < 1)) {
                 throw new InvalidArgumentException('Audit identifiers must be positive integers.');
             }
             if ($key === 'role' && (! is_string($value) || ! in_array($value, array_column(WorkspaceMemberRole::cases(), 'value'), true))) {
                 throw new InvalidArgumentException('Audit roles must be valid workspace roles.');
             }
-            if ($key === 'status' && (! is_string($value) || ! in_array($value, array_merge(array_column(UserStatus::cases(), 'value'), array_column(ContractStatus::cases(), 'value')), true))) {
+             if ($key === 'status' && (! is_string($value) || ! in_array($value, array_merge(array_column(UserStatus::cases(), 'value'), array_column(ContractStatus::cases(), 'value'), array_column(InvoiceStatus::cases(), 'value')), true))) {
                 throw new InvalidArgumentException('Audit statuses must be valid user statuses.');
             }
-            if ($key === 'last_login_at' && $value !== null && (! is_string($value) || DateTimeImmutable::createFromFormat(DateTimeInterface::ATOM, $value) === false)) {
+             if ($key === 'last_login_at' && $value !== null && (! is_string($value) || DateTimeImmutable::createFromFormat(DateTimeInterface::ATOM, $value) === false)) {
                 throw new InvalidArgumentException('Audit timestamps must be ISO-8601 values.');
             }
-        }
+              if (($key === 'payment_method' && $value !== null && (! is_string($value) || ! in_array($value, ['cash', 'bank_transfer', 'other'], true))) || ($key === 'payment_date' && (! is_string($value) || DateTimeImmutable::createFromFormat('!Y-m-d', $value) === false))) throw new InvalidArgumentException('Invalid payment audit value.');
+              if (in_array($key, ['period_start', 'period_end', 'due_date', 'paid_date'], true) && $value !== null && (! is_string($value) || DateTimeImmutable::createFromFormat('!Y-m-d', $value) === false)) throw new InvalidArgumentException('Invalid invoice audit date.');
+              if ($key === 'amount' && (! is_int($value) || $value < 0 || $value > PHP_INT_MAX)) throw new InvalidArgumentException('Invalid invoice audit amount.');
+              if ($key === 'currency' && (! is_string($value) || preg_match('/^[A-Z]{3,10}$/', $value) !== 1)) throw new InvalidArgumentException('Invalid invoice audit currency.');
+              if ($key === 'invoice_number' && (! is_string($value) || strlen($value) > 100 || preg_match(self::INVOICE_NUMBER_PATTERN, $value) !== 1)) throw new InvalidArgumentException('Invalid invoice audit number.');
+         }
     }
 }

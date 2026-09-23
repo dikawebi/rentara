@@ -16,4 +16,5 @@ class RentalContract extends \Illuminate\Database\Eloquent\Model
     public function tenants(){return $this->belongsToMany(Tenant::class,'contract_tenant')->withTimestamps();}
     public function checkIn(){return $this->hasOne(CheckIn::class);}
     public function checkOut(){return $this->hasOne(CheckOut::class);}
+    public function invoices(){return $this->hasMany(Invoice::class, 'contract_id');}
 }

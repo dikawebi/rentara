@@ -123,6 +123,35 @@ class AuditLogTest extends TestCase
         }
     }
 
+    public function test_logger_rejects_non_positive_invoice_identifiers(): void
+    {
+        $logger = app(AuditLogger::class);
+
+        foreach ([0, -1, '1', 1.5, null] as $value) {
+            try {
+                $logger->assertSafeValues(['invoice_id' => $value]);
+                $this->fail('Invalid invoice_id was accepted.');
+            } catch (InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    public function test_logger_accepts_slash_invoice_numbers_but_rejects_unsafe_formats(): void
+    {
+        $logger = app(AuditLogger::class);
+        $logger->assertSafeValues(['invoice_number' => 'INV/2026']);
+
+        foreach (['INV 2026', '/INV-2026', 'INV-2026/'] as $value) {
+            try {
+                $logger->assertSafeValues(['invoice_number' => $value]);
+                $this->fail("{$value} was accepted.");
+            } catch (InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
     public function test_request_context_normalizes_and_discards_unsafe_user_agents(): void
     {
         $longAgent = str_repeat('A', 600)."\x00\n";

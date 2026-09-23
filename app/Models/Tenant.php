@@ -32,4 +32,5 @@ class Tenant extends Model
 
     public function workspace() { return $this->belongsTo(Workspace::class); }
     public function unit() { return $this->belongsTo(Unit::class); }
+    public function invoices() { return $this->hasMany(Invoice::class); }
 }

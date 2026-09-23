@@ -79,4 +79,5 @@ class Workspace extends Model
     }
 
     public function tenants() { return $this->hasMany(Tenant::class); }
+    public function invoices() { return $this->hasMany(Invoice::class); }
 }

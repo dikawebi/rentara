@@ -14,6 +14,7 @@ use App\Http\Controllers\MediaController;
 use App\Http\Controllers\UnitAmenityController;
 use App\Http\Controllers\TenantController;
 use App\Http\Controllers\RentalContractController;
+use App\Http\Controllers\InvoiceController;
 use App\Support\PostAuthenticationRedirect;
 use Illuminate\Support\Facades\Route;
 
@@ -62,7 +63,9 @@ Route::middleware(['auth', 'active-user', 'verified', 'workspace-context'])->pre
     Route::post('contracts/{contract}/renew', [RentalContractController::class, 'renew'])->whereNumber('contract')->name('contracts.renew');
     Route::post('contracts/{contract}/tenants', [RentalContractController::class, 'attachTenant'])->whereNumber('contract')->name('contracts.tenants.attach');
     Route::post('contracts/{contract}/check-in', [RentalContractController::class, 'checkIn'])->whereNumber('contract')->name('contracts.check-in');
-    Route::post('contracts/{contract}/check-out', [RentalContractController::class, 'checkOut'])->whereNumber('contract')->name('contracts.check-out');
+     Route::post('contracts/{contract}/check-out', [RentalContractController::class, 'checkOut'])->whereNumber('contract')->name('contracts.check-out');
+     Route::resource('invoices', InvoiceController::class)->except(['destroy'])->whereNumber('invoice');
+     Route::post('invoices/{invoice}/pay', [InvoiceController::class, 'pay'])->whereNumber('invoice')->name('invoices.pay');
     Route::get('properties/{property}/units/{unit}/amenities/edit', [UnitAmenityController::class, 'edit'])->whereNumber(['property', 'unit'])->name('properties.units.amenities.edit');
     Route::put('properties/{property}/units/{unit}/amenities', [UnitAmenityController::class, 'update'])->whereNumber(['property', 'unit'])->name('properties.units.amenities.update');
     Route::get('properties/{property}/media/{unit?}', [MediaController::class, 'index'])->whereNumber(['property', 'unit'])->name('properties.media.index');
