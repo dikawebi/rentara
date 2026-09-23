@@ -194,7 +194,7 @@ class MaintenanceTicketTest extends TestCase
         $this->assertDatabaseCount('maintenance_ticket_status_mutation_guards', 0);
 
         $this->expectException(\Throwable::class);
-        	\DB::statement("UPDATE maintenance_tickets SET status = 'reviewed' WHERE id = ".$ticket->id);
+        \DB::statement("UPDATE maintenance_tickets SET status = 'reviewed' WHERE id = ".$ticket->id);
     }
 
     public function test_mariadb_driver_path_is_explicitly_supported_without_a_mariadb_server(): void
