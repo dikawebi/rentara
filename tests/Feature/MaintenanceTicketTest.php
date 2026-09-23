@@ -232,9 +232,29 @@ class MaintenanceTicketTest extends TestCase
         }
     }
 
+    public function test_sqlite_media_migration_has_one_xor_trigger_pair_and_ticket_schema(): void
+    {
+        $this->assertTrue(\Schema::hasColumn('media', 'maintenance_ticket_id'));
+
+        $foreignKeys = collect(\DB::select('PRAGMA foreign_key_list(media)'))
+            ->filter(fn (object $foreignKey): bool => $foreignKey->table === 'maintenance_tickets');
+        $this->assertCount(2, $foreignKeys);
+        $this->assertSame(
+            [['maintenance_ticket_id', 'id'], ['workspace_id', 'workspace_id']],
+            $foreignKeys->map(fn (object $foreignKey): array => [$foreignKey->from, $foreignKey->to])->sort()->values()->all(),
+        );
+
+        $triggers = collect(\DB::select("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'media_parent_xor_%'"));
+        $this->assertCount(2, $triggers);
+        $this->assertSame(['media_parent_xor_insert', 'media_parent_xor_update'], $triggers->pluck('name')->sort()->values()->all());
+        $this->assertTrue($triggers->every(fn (object $trigger): bool => str_contains($trigger->sql, 'maintenance_ticket_id')));
+    }
+
     public function test_sqlite_media_rollback_preserves_composite_parent_keys_and_rows(): void
     {
         $g = $this->graph();
+        $migration = require base_path('database/migrations/2026_09_23_000018_add_maintenance_ticket_parent_to_media.php');
+        if (! \Schema::hasColumn('media', 'maintenance_ticket_id')) $migration->up();
         \DB::table('media')->insert([
             'workspace_id' => $g['workspace']->id, 'property_id' => $g['property']->id,
             'disk' => 'local', 'path' => 'kept.jpg', 'original_name' => 'kept.jpg',
@@ -242,18 +262,22 @@ class MaintenanceTicketTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        $migration = require base_path('database/migrations/2026_09_23_000018_add_maintenance_ticket_parent_to_media.php');
         $migration->down();
 
         $this->assertDatabaseHas('media', ['path' => 'kept.jpg']);
         $other = $this->graph();
         $this->expectException(\Throwable::class);
-        \DB::table('media')->insert([
-            'workspace_id' => $g['workspace']->id, 'property_id' => $other['property']->id,
-            'disk' => 'local', 'path' => 'cross-workspace.jpg', 'original_name' => 'cross-workspace.jpg',
-            'mime_type' => 'image/jpeg', 'extension' => 'jpg', 'size_bytes' => 1,
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
+        try {
+            \DB::table('media')->insert([
+                'workspace_id' => $g['workspace']->id, 'property_id' => $other['property']->id,
+                'disk' => 'local', 'path' => 'cross-workspace.jpg', 'original_name' => 'cross-workspace.jpg',
+                'mime_type' => 'image/jpeg', 'extension' => 'jpg', 'size_bytes' => 1,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        } finally {
+            // SQLite DDL is not reliably reverted by the test transaction.
+            $migration->up();
+        }
     }
 
     public function test_history_query_builder_delete_is_rejected(): void

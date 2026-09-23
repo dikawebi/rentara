@@ -9,6 +9,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        $driver = DB::connection()->getDriverName();
+        if (! in_array($driver, ['sqlite', 'mysql', 'mariadb'], true)) {
+            throw new \RuntimeException("Unsupported database driver '{$driver}'; media migrations support SQLite/MySQL/MariaDB only.");
+        }
         Schema::create('media', function (Blueprint $table) {
             $table->id();
             $table->foreignId('workspace_id')->constrained('workspaces')->cascadeOnDelete();
@@ -33,7 +37,14 @@ return new class extends Migration
             $table->index(['workspace_id', 'unit_id', 'sort_order']);
         });
 
-        DB::statement('ALTER TABLE media ADD CONSTRAINT media_parent_xor CHECK ((property_id IS NOT NULL AND unit_id IS NULL) OR (property_id IS NULL AND unit_id IS NOT NULL))');
+        if ($driver === 'sqlite') {
+            DB::statement("CREATE TRIGGER media_parent_xor_insert BEFORE INSERT ON media WHEN NOT ((NEW.property_id IS NOT NULL AND NEW.unit_id IS NULL) OR (NEW.property_id IS NULL AND NEW.unit_id IS NOT NULL)) BEGIN SELECT RAISE(ABORT, 'media parent xor violation'); END");
+            DB::statement("CREATE TRIGGER media_parent_xor_update BEFORE UPDATE OF property_id,unit_id ON media WHEN NOT ((NEW.property_id IS NOT NULL AND NEW.unit_id IS NULL) OR (NEW.property_id IS NULL AND NEW.unit_id IS NOT NULL)) BEGIN SELECT RAISE(ABORT, 'media parent xor violation'); END");
+        } else {
+            // MySQL 8.0.16+ and MariaDB 10.6+ enforce this declared CHECK.
+            DB::statement('ALTER TABLE media ADD CONSTRAINT media_parent_xor CHECK ((property_id IS NOT NULL AND unit_id IS NULL) OR (property_id IS NULL AND unit_id IS NOT NULL))');
+        }
+
     }
 
     public function down(): void

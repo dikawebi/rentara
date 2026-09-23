@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Models;
 
 use App\Support\AuditLogger;
@@ -68,6 +67,7 @@ class AuditLog extends Model
             throw new InvalidArgumentException('Audit fingerprints cannot be set through the model.');
         }
     }
+
 
     /** @param array<string, mixed> $attributes @param array<string, mixed>|null $oldValues @param array<string, mixed>|null $newValues */
     public static function assertPersistable(array $attributes, ?array $oldValues, ?array $newValues): void

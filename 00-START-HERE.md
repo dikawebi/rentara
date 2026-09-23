@@ -1,10 +1,12 @@
 # Rentara — Start Here
 
+> **Historical/bootstrap handoff:** this document describes the Release 0 package used to bootstrap Rentara. The current repository is no longer at Release 0; it includes `RENTARA-FEAT-002` through `RENTARA-FEAT-012`. Use the repository implementation and current documentation as the source of truth for present behavior.
+
 ## What This Folder Is
 
-This is a **coding-agent documentation package**, not a runnable Laravel application.
+This is a **historical coding-agent documentation package**, not a runnable Laravel application.
 
-The project source code does not exist yet. First create a Laravel project, then copy this package into that project and instruct the coding agent to implement Release 0 only.
+At the time of this handoff, the project source code did not exist. First create a Laravel project, then copy this package into that project and instruct the coding agent to implement Release 0 only. That bootstrap instruction is historical and must not be read as the current repository scope.
 
 ## Package Contents
 
@@ -48,7 +50,7 @@ Minimum target:
 - PHP 8.2+
 - Composer 2+
 - Node.js LTS (used locally for Vite/Tailwind builds only)
-- MySQL/MariaDB
+- MySQL 8.0.16+ or MariaDB 10.6+ for supported application/production use; SQLite is test-only and PostgreSQL is not production-supported.
 - Git
 
 If one command is unavailable, resolve that prerequisite before creating the project.
@@ -200,7 +202,7 @@ Confirm:
 - Audit records are generated for login, registration, workspace creation, and role/member changes.
 - Test suite passes.
 
-Only after this review should the agent begin Release 1: Property and Unit Management.
+Historically, only after this review would the agent begin Release 1: Property and Unit Management. The current repository already includes property, unit, contract, invoice, and maintenance implementations through `RENTARA-FEAT-012`.
 
 ## Step 9 — Build for Shared Hosting
 
@@ -215,7 +217,7 @@ For production shared hosting:
 
 1. Upload/deploy the Laravel project, including `public/build`.
 2. Set the hosting document root to the Laravel `public/` directory.
-3. Create the production MySQL database and production `.env` values.
+3. Create a production MySQL 8.0.16+ or MariaDB 10.6+ database and production `.env` values. PostgreSQL is not production-supported.
 4. Set `APP_DEBUG=false` and `APP_ENV=production`.
 5. Ensure `storage/` and `bootstrap/cache/` are writable.
 6. Configure SMTP before enabling email verification/reminders.

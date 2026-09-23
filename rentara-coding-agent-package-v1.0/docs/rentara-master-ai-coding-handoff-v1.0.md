@@ -1,5 +1,7 @@
 # Rentara — Master AI Coding Handoff v1.0
 
+> **Historical/bootstrap handoff:** this document records the original Release 0 bootstrap direction. The current repository includes `RENTARA-FEAT-002` through `RENTARA-FEAT-012`; current implementation documentation supersedes the historical release sequencing below where behavior has since been implemented.
+
 > This is the single source of truth for implementation. It supersedes earlier working documents that use the name Huniva or earlier Rentara directions.
 
 ## 1. Locked Product Decisions
@@ -16,7 +18,7 @@
 | User platform | Responsive web + installable PWA |
 | Hosting | Shared hosting first; move to VPS only when needed |
 | Architecture | Laravel full-stack: Blade + Livewire + Alpine.js + Tailwind CSS |
-| Database | MySQL/MariaDB preferred for shared hosting; PostgreSQL allowed if reliably provided |
+| Database | Production supports exactly MySQL 8.0.16+ or MariaDB 10.6+; SQLite is test-only; PostgreSQL is not production-supported |
 | Production constraint | No Docker dependency, no Next.js, no Node.js runtime, no WebSocket server, no permanent queue worker |
 
 ## 2. Product Positioning
@@ -307,7 +309,7 @@ audit_logs
 - PHP 8.2+.
 - Blade + Livewire + Alpine.js.
 - Tailwind CSS.
-- MySQL/MariaDB preferred for shared hosting.
+- MySQL 8.0.16+ or MariaDB 10.6+ only for production shared hosting; SQLite is test-only and PostgreSQL is not production-supported.
 - Laravel Scheduler.
 - SMTP for email.
 - PWA manifest and service worker.

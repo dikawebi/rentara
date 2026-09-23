@@ -11,7 +11,7 @@ return new class extends Migration {
         $driver = DB::connection()->getDriverName();
         Schema::create('maintenance_ticket_status_mutation_guards', function (Blueprint $table) {
             $table->unsignedBigInteger('maintenance_ticket_id')->primary();
-            $table->foreign('maintenance_ticket_id')->references('id')->on('maintenance_tickets')->cascadeOnDelete();
+            $table->foreign('maintenance_ticket_id', 'mt_status_guard_ticket_fk')->references('id')->on('maintenance_tickets')->cascadeOnDelete();
         });
         if ($driver === 'sqlite') {
             DB::statement("CREATE TRIGGER maintenance_ticket_status_no_raw_update BEFORE UPDATE OF status ON maintenance_tickets WHEN NOT EXISTS (SELECT 1 FROM maintenance_ticket_status_mutation_guards WHERE maintenance_ticket_id = OLD.id) BEGIN SELECT RAISE(ABORT, 'ticket status must use a transition'); END");

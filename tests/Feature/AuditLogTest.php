@@ -205,6 +205,79 @@ class AuditLogTest extends TestCase
         AuditLog::create(['event' => AuditLogger::LOGIN_SUCCEEDED, 'new_values' => ['role' => 'Bearer secret']]);
     }
 
+    public function test_database_rejects_raw_audit_update_and_delete(): void
+    {
+        $user = User::factory()->create();
+        $workspace = Workspace::factory()->create(['owner_id' => $user->id]);
+        app(AuditLogger::class)->workspaceCreated($user, $workspace);
+        $audit = AuditLog::latest('id')->firstOrFail();
+
+        foreach ([['user_id' => null], ['workspace_id' => null], ['event' => AuditLogger::LOGOUT]] as $mutation) {
+            try {
+                DB::table('audit_logs')->where('id', $audit->id)->update($mutation);
+                $this->fail('Raw audit update unexpectedly succeeded.');
+            } catch (\Illuminate\Database\QueryException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+        try {
+            DB::table('audit_logs')->where('id', $audit->id)->delete();
+            $this->fail('Raw audit delete unexpectedly succeeded.');
+        } catch (\Illuminate\Database\QueryException) {
+            $this->addToAssertionCount(1);
+        }
+        $this->assertDatabaseHas('audit_logs', ['id' => $audit->id]);
+    }
+
+    public function test_parent_deletion_preserves_historical_audit_ids(): void
+    {
+        $user = User::factory()->create();
+        $workspace = Workspace::factory()->create(['owner_id' => $user->id]);
+        app(AuditLogger::class)->workspaceCreated($user, $workspace);
+        $audit = AuditLog::where('workspace_id', $workspace->id)->latest('id')->firstOrFail();
+
+        DB::table('workspaces')->where('id', $workspace->id)->delete();
+        DB::table('users')->where('id', $user->id)->delete();
+
+        $this->assertDatabaseHas('audit_logs', [
+            'id' => $audit->id,
+            'user_id' => $user->id,
+            'workspace_id' => $workspace->id,
+        ]);
+    }
+
+    public function test_audit_parent_migration_removes_only_fks_and_preserves_rows_and_indexes(): void
+    {
+        $migration = require database_path('migrations/2026_09_23_000021_detach_audit_log_parents.php');
+        $migration->up();
+
+        $this->assertSame([], DB::select('PRAGMA foreign_key_list(audit_logs)'));
+        DB::table('audit_logs')->insert(['event' => AuditLogger::LOGIN_DENIED, 'created_at' => now()]);
+        $this->assertDatabaseHas('audit_logs', ['id' => 1]);
+        $this->assertNotEmpty(DB::select("PRAGMA index_list('audit_logs')"));
+        $migration->down();
+        $this->assertCount(2, DB::select('PRAGMA foreign_key_list(audit_logs)'));
+        $this->assertDatabaseHas('audit_logs', ['id' => 1]);
+        $migration->up();
+    }
+
+    public function test_audit_protection_installs_both_sqlite_triggers_and_keeps_insert_path_open(): void
+    {
+        $triggers = collect(DB::select("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'audit_logs_no_%'"));
+
+        $this->assertSame(['audit_logs_no_delete', 'audit_logs_no_update'], $triggers->pluck('name')->sort()->values()->all());
+        $this->assertTrue($triggers->firstWhere('name', 'audit_logs_no_update')->sql !== null);
+        $this->assertTrue($triggers->firstWhere('name', 'audit_logs_no_delete')->sql !== null);
+
+        $migration = require database_path('migrations/2026_09_23_000020_protect_audit_logs.php');
+        $this->assertTrue($migration::supportsMysqlTriggers('mysql'));
+        $this->assertTrue($migration::supportsMysqlTriggers('mariadb'));
+        $this->assertFalse($migration::supportsMysqlTriggers('pgsql'));
+
+        app(AuditLogger::class)->loginDenied(AuditRequestContext::fromRequest(Request::create('/')));
+        $this->assertDatabaseHas('audit_logs', ['event' => AuditLogger::LOGIN_DENIED]);
+    }
+
     public function test_audit_logs_ignore_fill_and_reject_force_fill_persistence(): void
     {
         $filled = new AuditLog;
@@ -293,7 +366,7 @@ class AuditLogTest extends TestCase
     public function test_factory_and_audit_logger_persist_only_safe_audit_records(): void
     {
         $factoryLog = AuditLog::factory()->create();
-        $this->assertMatchesRegularExpression('/^sha256:[a-f0-9]{64}$/', $factoryLog->user_agent);
+        $this->assertNull($factoryLog->user_agent);
         $this->assertNull($factoryLog->new_values);
 
         $attackerAgent = 'Mozilla/5.0 Authorization: Bearer raw-attacker-token';

@@ -15,4 +15,4 @@ This decision is implemented for identity status, platform and workspace roles, 
 
 ## Current boundary
 
-This implementation does not provide invitations, ownership transfer, co-owners, property-level assignments, an audit viewer/listing/API, or other product modules. Member lifecycle changes are recorded by the `RENTARA-FEAT-004` audit baseline (see implementation doc); `super_admin` remains platform-only and is never a workspace-role bypass.
+This implementation does not provide invitations, ownership transfer, co-owners, a tenant portal, an audit viewer/listing/API, or other product modules. Property-level assignments are implemented for the property-scoped operational features documented in the implementation record. Member lifecycle changes are recorded by the `RENTARA-FEAT-004` audit baseline; `super_admin` remains platform-only and is never a workspace-role bypass.
