@@ -15,6 +15,7 @@ use App\Http\Controllers\UnitAmenityController;
 use App\Http\Controllers\TenantController;
 use App\Http\Controllers\RentalContractController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\MaintenanceTicketController;
 use App\Support\PostAuthenticationRedirect;
 use Illuminate\Support\Facades\Route;
 
@@ -71,7 +72,12 @@ Route::middleware(['auth', 'active-user', 'verified', 'workspace-context'])->pre
     Route::get('properties/{property}/media/{unit?}', [MediaController::class, 'index'])->whereNumber(['property', 'unit'])->name('properties.media.index');
     Route::post('properties/{property}/media/{unit?}', [MediaController::class, 'store'])->whereNumber(['property', 'unit'])->name('properties.media.store');
     Route::get('media/{media}', [MediaController::class, 'stream'])->whereNumber('media')->name('media.stream');
-    Route::delete('media/{media}', [MediaController::class, 'destroy'])->whereNumber('media')->name('media.destroy');
+     Route::delete('media/{media}', [MediaController::class, 'destroy'])->whereNumber('media')->name('media.destroy');
+     Route::post('maintenance-tickets/{ticket}/media', [MediaController::class, 'ticketStore'])->whereNumber('ticket')->name('maintenance-tickets.media.store');
+      Route::resource('maintenance-tickets', MaintenanceTicketController::class)->only(['index','create','show','store','edit','update','destroy'])->whereNumber('maintenance_ticket');
+     Route::post('maintenance-tickets/{ticket}/transition', [MaintenanceTicketController::class, 'transition'])->whereNumber('ticket')->name('maintenance-tickets.transition');
+     Route::post('maintenance-tickets/{ticket}/assign', [MaintenanceTicketController::class, 'assign'])->whereNumber('ticket')->name('maintenance-tickets.assign');
+     Route::post('maintenance-tickets/{ticket}/restore', [MaintenanceTicketController::class, 'restore'])->whereNumber('ticket')->name('maintenance-tickets.restore');
     Route::get('properties/{property}/assignments', [PropertyAssignmentController::class, 'index'])->whereNumber('property')->name('properties.assignments.index');
     Route::post('properties/{property}/assignments', [PropertyAssignmentController::class, 'store'])->whereNumber('property')->name('properties.assignments.store');
     Route::delete('properties/{property}/assignments/{assignment}', [PropertyAssignmentController::class, 'destroy'])->whereNumber(['property', 'assignment'])->name('properties.assignments.destroy');

@@ -99,4 +99,5 @@ class Unit extends Model
     {
         return $this->hasMany(Tenant::class)->where('status', 'active');
     }
+    public function maintenanceTickets() { return $this->hasMany(MaintenanceTicket::class); }
 }

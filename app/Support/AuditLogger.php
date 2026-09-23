@@ -12,6 +12,7 @@ use App\Enums\UserStatus;
 use App\Enums\WorkspaceMemberRole;
 use App\Enums\ContractStatus;
 use App\Enums\InvoiceStatus;
+use App\Enums\MaintenanceTicketStatus;
 use DateTimeImmutable;
 use DateTimeInterface;
 use InvalidArgumentException;
@@ -47,6 +48,26 @@ class AuditLogger
     public const INVOICE_CREATED = 'invoice.created';
     public const INVOICE_UPDATED = 'invoice.updated';
     public const INVOICE_PAYMENT_RECORDED = 'invoice.payment_recorded';
+    public const MAINTENANCE_STATUS_CHANGED = 'maintenance_ticket.status_changed';
+    public const MAINTENANCE_ASSIGNED = 'maintenance_ticket.assigned';
+    public const MAINTENANCE_CREATED = 'maintenance_ticket.created';
+    public const MAINTENANCE_UPDATED = 'maintenance_ticket.updated';
+    public const MAINTENANCE_DELETED = 'maintenance_ticket.deleted';
+    public const MAINTENANCE_RESTORED = 'maintenance_ticket.restored';
+    public function maintenanceAssignment(?User $actor, \App\Models\MaintenanceTicket $ticket, ?int $old, int $new): void
+    { $this->write(self::MAINTENANCE_ASSIGNED, $actor, $ticket->workspace, $ticket, $old ? ['assigned_to'=>$old] : null, $this->maintenanceValues($ticket, ['assigned_to'=>$new])); }
+    public function maintenanceEvent(?User $actor, \App\Models\MaintenanceTicket $ticket, MaintenanceTicketStatus $old, MaintenanceTicketStatus $new): void
+    { $this->write(self::MAINTENANCE_STATUS_CHANGED, $actor, $ticket->workspace, $ticket, ['status'=>$old->value], $this->maintenanceValues($ticket, ['status'=>$new->value])); }
+    public function maintenanceCreated(?User $actor, \App\Models\MaintenanceTicket $ticket): void { $this->write(self::MAINTENANCE_CREATED, $actor, $ticket->workspace, $ticket, null, $this->maintenanceValues($ticket)); }
+    public function maintenanceUpdated(?User $actor, \App\Models\MaintenanceTicket $ticket, array $old, array $new): void { $this->write(self::MAINTENANCE_UPDATED, $actor, $ticket->workspace, $ticket, $old, $new); }
+    public function maintenanceDeleted(?User $actor, \App\Models\MaintenanceTicket $ticket): void { $this->write(self::MAINTENANCE_DELETED, $actor, $ticket->workspace, $ticket, $this->maintenanceValues($ticket), null); }
+    public function maintenanceRestored(?User $actor, \App\Models\MaintenanceTicket $ticket): void { $this->write(self::MAINTENANCE_RESTORED, $actor, $ticket->workspace, $ticket, null, $this->maintenanceValues($ticket)); }
+    public function maintenanceValues(\App\Models\MaintenanceTicket $ticket, array $override = []): array
+    {
+        $values = ['ticket_id'=>(int)$ticket->id, 'workspace_id'=>(int)$ticket->workspace_id, 'property_id'=>(int)$ticket->property_id, 'unit_id'=>(int)$ticket->unit_id, 'status'=>$ticket->status->value, 'priority'=>$ticket->priority->value, 'estimated_cost'=>$ticket->estimated_cost, 'actual_cost'=>$ticket->actual_cost, 'charged_to'=>$ticket->charged_to?->value, 'resolved_at'=>$ticket->resolved_at?->format(DateTimeInterface::ATOM)];
+        foreach (['tenant_id','assigned_to'] as $key) if ($ticket->{$key} !== null) $values[$key] = (int)$ticket->{$key};
+        return array_replace($values, $override);
+    }
 
     public function invoiceEvent(string $event, ?User $actor, \App\Models\Invoice $invoice, ?array $old = null, ?array $new = null): void
     { $this->write($event, $actor, $invoice->workspace, $invoice, $old, $new); }
@@ -184,21 +205,25 @@ class AuditLogger
     public function assertSafeValues(?array $values): void
     {
         foreach ($values ?? [] as $key => $value) {
-             if (! in_array($key, ['user_id', 'workspace_id', 'member_id', 'contract_id', 'tenant_id', 'unit_id', 'property_id', 'check_in_id', 'check_out_id', 'invoice_id', 'role', 'status', 'last_login_at', 'payment_date', 'payment_method', 'paid_date', 'amount', 'currency', 'invoice_number', 'period_start', 'period_end', 'due_date'], true)) {
+             if (! in_array($key, ['user_id', 'workspace_id', 'member_id', 'contract_id', 'tenant_id', 'unit_id', 'property_id', 'check_in_id', 'check_out_id', 'invoice_id', 'ticket_id', 'assigned_to', 'role', 'status', 'priority', 'estimated_cost', 'actual_cost', 'charged_to', 'resolved_at', 'last_login_at', 'payment_date', 'payment_method', 'paid_date', 'amount', 'currency', 'invoice_number', 'period_start', 'period_end', 'due_date'], true)) {
                 throw new InvalidArgumentException('Only allowlisted audit values can be recorded.');
             }
             if (preg_match('/password|token|remember|api[_-]?key|credential|document|content|path/i', (string) $key) || (is_string($value) && preg_match('/password|token|remember|api[_-]?key|credential|document|content|path|secret|bearer/i', $value))) {
                 throw new InvalidArgumentException('Secret or raw document fields cannot be audited.');
             }
-             if (in_array($key, ['user_id', 'workspace_id', 'member_id', 'contract_id', 'tenant_id', 'unit_id', 'property_id', 'check_in_id', 'check_out_id', 'invoice_id'], true) && (! is_int($value) || $value < 1)) {
+              if (in_array($key, ['user_id', 'workspace_id', 'member_id', 'contract_id', 'tenant_id', 'unit_id', 'property_id', 'check_in_id', 'check_out_id', 'invoice_id', 'ticket_id', 'assigned_to'], true) && (! is_int($value) || $value < 1)) {
                 throw new InvalidArgumentException('Audit identifiers must be positive integers.');
             }
             if ($key === 'role' && (! is_string($value) || ! in_array($value, array_column(WorkspaceMemberRole::cases(), 'value'), true))) {
                 throw new InvalidArgumentException('Audit roles must be valid workspace roles.');
             }
-             if ($key === 'status' && (! is_string($value) || ! in_array($value, array_merge(array_column(UserStatus::cases(), 'value'), array_column(ContractStatus::cases(), 'value'), array_column(InvoiceStatus::cases(), 'value')), true))) {
+              if ($key === 'status' && (! is_string($value) || ! in_array($value, array_merge(array_column(UserStatus::cases(), 'value'), array_column(ContractStatus::cases(), 'value'), array_column(InvoiceStatus::cases(), 'value'), array_column(MaintenanceTicketStatus::cases(), 'value')), true))) {
                 throw new InvalidArgumentException('Audit statuses must be valid user statuses.');
-            }
+              }
+              if ($key === 'priority' && (! is_string($value) || ! in_array($value, ['low','normal','high','urgent'], true))) throw new InvalidArgumentException('Invalid maintenance priority.');
+              if ($key === 'charged_to' && $value !== null && (! is_string($value) || ! in_array($value, ['owner','tenant','workspace'], true))) throw new InvalidArgumentException('Invalid maintenance charge target.');
+              if (in_array($key, ['estimated_cost','actual_cost'], true) && $value !== null && (! is_int($value) || $value < 0)) throw new InvalidArgumentException('Invalid maintenance cost.');
+              if ($key === 'resolved_at' && $value !== null && (! is_string($value) || DateTimeImmutable::createFromFormat(DateTimeInterface::ATOM, $value) === false)) throw new InvalidArgumentException('Invalid maintenance timestamp.');
              if ($key === 'last_login_at' && $value !== null && (! is_string($value) || DateTimeImmutable::createFromFormat(DateTimeInterface::ATOM, $value) === false)) {
                 throw new InvalidArgumentException('Audit timestamps must be ISO-8601 values.');
             }

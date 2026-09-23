@@ -47,14 +47,15 @@ class MediaPolicy
 
     private function propertyId(Media $media): ?int
     {
-        return $media->property_id ?? $media->unit?->property_id;
+        return $media->property_id ?? $media->unit?->property_id ?? $media->maintenanceTicket?->property_id;
     }
 
     private function parentIsValid(Media $media): bool
     {
-        $property = $media->property_id ? $media->property : $media->unit?->property;
+        $property = $media->property_id ? $media->property : ($media->unit?->property ?: $media->maintenanceTicket?->property);
         return $property !== null && $property->workspace_id === $media->workspace_id && $property->status === PropertyStatus::Active && ! $property->trashed()
-            && (! $media->unit_id || ($media->unit && $media->unit->workspace_id === $media->workspace_id && ! $media->unit->trashed()));
+            && (! $media->unit_id || ($media->unit && $media->unit->workspace_id === $media->workspace_id && ! $media->unit->trashed()))
+            && (! $media->maintenance_ticket_id || ($media->maintenanceTicket && $media->maintenanceTicket->workspace_id === $media->workspace_id && ! $media->maintenanceTicket->trashed()));
     }
 
     private function role(User $user, Workspace $workspace): ?WorkspaceMemberRole

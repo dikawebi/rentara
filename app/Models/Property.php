@@ -83,4 +83,5 @@ class Property extends Model
         return $this->hasMany(Media::class);
     }
     public function invoices() { return $this->hasMany(Invoice::class); }
+    public function maintenanceTickets() { return $this->hasMany(MaintenanceTicket::class); }
 }

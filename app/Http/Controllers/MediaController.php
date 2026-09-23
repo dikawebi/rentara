@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Media;
 use App\Models\Property;
 use App\Models\Unit;
+use App\Models\MaintenanceTicket;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -65,12 +66,12 @@ class MediaController extends Controller
     public function stream(Request $request, int $media)
     {
         $workspaceId = $request->attributes->get('currentWorkspace')->id;
-        $media = Media::with(['property', 'unit.property'])->where('workspace_id', $workspaceId)->findOrFail($media);
-        $parent = $media->unit ?: $media->property;
-        $parentProperty = $media->unit?->property ?: $media->property;
+        $media = Media::with(['property', 'unit.property', 'maintenanceTicket.property'])->where('workspace_id', $workspaceId)->findOrFail($media);
+        $parent = $media->unit ?: $media->property ?: $media->maintenanceTicket;
+        $parentProperty = $media->unit?->property ?: $media->property ?: $media->maintenanceTicket?->property;
         abort_unless($parent && $parentProperty && $parent->workspace_id === $workspaceId && $parentProperty->workspace_id === $workspaceId, 404);
-        abort_unless($media->disk === 'local' && preg_match('#^workspaces/(\d+)/(properties|units)/(\d+)/media/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.(jpg|jpeg|png|webp)$#D', $media->path, $matches) === 1, 404);
-        $expectedParent = $media->unit_id ? 'units/'.$media->unit_id : 'properties/'.$media->property_id;
+        abort_unless($media->disk === 'local' && preg_match('#^workspaces/(\d+)/(properties|units|maintenance-tickets)/(\d+)/media/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.(jpg|jpeg|png|webp)$#D', $media->path, $matches) === 1, 404);
+        $expectedParent = $media->unit_id ? 'units/'.$media->unit_id : ($media->property_id ? 'properties/'.$media->property_id : 'maintenance-tickets/'.$media->maintenance_ticket_id);
         abort_unless($matches[1] === (string) $workspaceId && $matches[2].'/'.$matches[3] === $expectedParent && $matches[5] === strtolower($media->extension), 404);
         $this->authorize('view', $media);
         $disk = Storage::disk('local');
@@ -94,5 +95,15 @@ class MediaController extends Controller
             throw new \RuntimeException('Media record deleted, but physical file cleanup failed.');
         }
         return back()->with('status', 'Media berhasil dihapus.');
+    }
+
+    public function ticketStore(Request $request, int $ticket)
+    {
+        $workspaceId = $request->attributes->get('currentWorkspace')->id;
+        $ticketModel = MaintenanceTicket::where('workspace_id',$workspaceId)->findOrFail($ticket);
+        $this->authorize('uploadPhoto', $ticketModel);
+        $data = $request->validate(['file'=>['required',File::image()->types(['jpg','jpeg','png','webp'])->max(10240)]], ['file.required'=>'Foto wajib dipilih.']);
+        $file=$data['file']; $extension=strtolower($file->extension()); $path='workspaces/'.$workspaceId.'/maintenance-tickets/'.$ticketModel->id.'/media/'.Str::uuid().'.'.$extension; $disk=Storage::disk('local');
+        try { if(!$disk->putFileAs(dirname($path),$file,basename($path))) throw new \RuntimeException('Unggah foto gagal.'); DB::transaction(function()use($ticketModel,$workspaceId,$path,$file,$extension,$request){$m=new Media;$m->setRawAttributes(['workspace_id'=>$workspaceId,'maintenance_ticket_id'=>$ticketModel->id,'disk'=>'local','path'=>$path,'original_name'=>$file->getClientOriginalName(),'mime_type'=>$file->getMimeType(),'extension'=>$extension,'size_bytes'=>$file->getSize(),'checksum'=>hash_file('sha256',$file->getRealPath()),'uploaded_by'=>$request->user()->id]);$m->save();}); } catch(Throwable $e){if(!$disk->delete($path))Log::critical('Foto tiket gagal dibersihkan',['path'=>$path]);throw $e;} return back()->with('status','Foto berhasil diunggah.');
     }
 }

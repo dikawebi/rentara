@@ -37,4 +37,5 @@ class Media extends Model
     {
         return $this->belongsTo(User::class, 'uploaded_by');
     }
+    public function maintenanceTicket() { return $this->belongsTo(MaintenanceTicket::class); }
 }

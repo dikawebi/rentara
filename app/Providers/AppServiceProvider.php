@@ -22,6 +22,8 @@ use App\Policies\AmenityPolicy;
 use App\Policies\MediaPolicy;
 use App\Policies\TenantPolicy;
 use App\Policies\RentalContractPolicy;
+use App\Models\MaintenanceTicket;
+use App\Policies\MaintenanceTicketPolicy;
 use App\Support\CurrentWorkspace;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -52,5 +54,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Media::class, MediaPolicy::class);
         Gate::policy(Tenant::class, TenantPolicy::class);
         Gate::policy(RentalContract::class, RentalContractPolicy::class);
+        Gate::policy(MaintenanceTicket::class, MaintenanceTicketPolicy::class);
     }
 }
