@@ -158,6 +158,41 @@ class OrganizationInvitationTest extends TestCase
         $this->assertDatabaseCount('organization_invitations', 0);
     }
 
+    public function test_an_organization_owner_cannot_mutate_another_organizations_membership_or_invitation(): void
+    {
+        [$owner, $organization] = $this->createOrganizationOwner();
+        $member = User::factory()->create();
+        $membership = $organization->memberships()->create([
+            'user_id' => $member->id,
+            'role' => OrganizationRole::Staff,
+            'accepted_at' => now(),
+        ]);
+        $invitation = $organization->invitations()->create([
+            'email' => 'pending@example.test',
+            'role' => OrganizationRole::Staff,
+            'token_hash' => hash('sha256', 'pending-token'),
+            'invited_by' => $owner->id,
+            'expires_at' => now()->addDay(),
+        ]);
+        $otherOwner = User::factory()->create();
+        $otherOrganization = Organization::factory()->create();
+        $otherOrganization->memberships()->create([
+            'user_id' => $otherOwner->id,
+            'role' => OrganizationRole::Owner,
+            'accepted_at' => now(),
+        ]);
+
+        $this->actingAs($otherOwner)
+            ->delete(route('organizations.members.destroy', [$otherOrganization, $membership]))
+            ->assertForbidden();
+        $this->actingAs($otherOwner)
+            ->delete(route('organizations.invitations.destroy', [$otherOrganization, $invitation]))
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('organization_memberships', ['id' => $membership->id]);
+        $this->assertDatabaseHas('organization_invitations', ['id' => $invitation->id, 'revoked_at' => null]);
+    }
+
     public function test_revoked_and_expired_invitation_tokens_cannot_be_used(): void
     {
         Notification::fake();

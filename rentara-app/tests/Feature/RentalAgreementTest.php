@@ -114,6 +114,41 @@ class RentalAgreementTest extends TestCase
         Storage::disk('contracts')->assertMissing($oldPath);
     }
 
+    public function test_another_organization_cannot_review_change_or_download_an_agreement(): void
+    {
+        Storage::fake('contracts');
+        [$application, $owner, , $organization] = $this->application();
+        $this->actingAs($owner)->post(route('organizations.applications.agreement.upsert', [$organization, $application]), [
+            'terms_snapshot' => ['rent' => 1800000],
+            'contract_file' => UploadedFile::fake()->createWithContent('contract.pdf', '%PDF-private-contract'),
+        ])->assertRedirect();
+
+        $otherOwner = User::factory()->create();
+        $otherOrganization = Organization::factory()->create();
+        $otherOrganization->memberships()->create([
+            'user_id' => $otherOwner->id,
+            'role' => OrganizationRole::Owner,
+            'accepted_at' => now(),
+        ]);
+
+        $this->actingAs($otherOwner)
+            ->post(route('organizations.applications.agreement.upsert', [$otherOrganization, $application]), [
+                'terms_snapshot' => ['rent' => 1],
+                'contract_file' => UploadedFile::fake()->create('other.pdf', 10, 'application/pdf'),
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($otherOwner)
+            ->post(route('organizations.applications.agreement.approve', [$otherOrganization, $application]))
+            ->assertNotFound();
+
+        $this->actingAs($otherOwner)
+            ->get(route('organizations.applications.agreement.download', [$otherOrganization, $application]))
+            ->assertNotFound();
+
+        $this->assertSame(['rent' => 1800000], $application->fresh()->rentalAgreement->terms_snapshot);
+    }
+
     public function test_failed_contract_write_is_cleaned_up_and_does_not_create_agreement(): void
     {
         [$application, $owner, , $organization] = $this->application();

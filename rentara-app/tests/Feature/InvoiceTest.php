@@ -14,6 +14,7 @@ use App\Services\InvoiceGenerationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -173,5 +174,42 @@ class InvoiceTest extends TestCase
         $this->assertNull($invoice->paid_by);
         $this->assertNull($invoice->payment_reference);
         $this->assertSame(1, AuditEvent::query()->where('action', 'invoice.payment_reversed')->count());
+    }
+
+    public function test_another_organization_cannot_download_evidence_or_reverse_an_invoice(): void
+    {
+        Storage::fake('payment_evidence');
+        $tenancy = Tenancy::factory()->create();
+        $path = 'invoices/'.$tenancy->id.'/private-receipt.enc';
+        Storage::disk('payment_evidence')->put($path, Crypt::encryptString('%PDF-private-evidence'));
+        $invoice = Invoice::factory()->create([
+            'tenancy_id' => $tenancy->id,
+            'organization_id' => $tenancy->organization_id,
+            'tenant_id' => $tenancy->tenant_id,
+            'status' => InvoiceStatus::Paid,
+            'paid_at' => now(),
+            'payment_evidence_storage_path' => $path,
+            'payment_evidence_mime_type' => 'application/pdf',
+            'payment_evidence_original_name' => 'receipt.pdf',
+        ]);
+        $otherOwner = User::factory()->create();
+        $otherOrganization = Organization::factory()->create();
+        $otherOrganization->memberships()->create([
+            'user_id' => $otherOwner->id,
+            'role' => OrganizationRole::Owner,
+            'accepted_at' => now(),
+        ]);
+
+        $this->actingAs($otherOwner)
+            ->get(route('organizations.invoices.payment-evidence.download', [$otherOrganization, $invoice]))
+            ->assertNotFound();
+
+        $this->actingAs($otherOwner)
+            ->patch(route('organizations.invoices.reverse', [$otherOrganization, $invoice]), [
+                'reason' => 'Cross-organization access must be denied.',
+            ])
+            ->assertNotFound();
+
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
     }
 }

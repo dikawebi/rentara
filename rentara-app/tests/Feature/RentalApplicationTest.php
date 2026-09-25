@@ -165,6 +165,35 @@ class RentalApplicationTest extends TestCase
         $this->assertDatabaseCount('rental_applications', 1);
     }
 
+    public function test_another_organization_cannot_view_or_change_an_application(): void
+    {
+        [$listing, $unit] = $this->createApprovedListing();
+        $application = RentalApplication::factory()->create([
+            'listing_id' => $listing->id,
+            'unit_id' => $unit->id,
+            'status' => ApplicationStatus::Submitted,
+        ]);
+        $otherOwner = User::factory()->create();
+        $otherOrganization = Organization::factory()->create();
+        $otherOrganization->memberships()->create([
+            'user_id' => $otherOwner->id,
+            'role' => OrganizationRole::Owner,
+            'accepted_at' => now(),
+        ]);
+
+        $this->actingAs($otherOwner)
+            ->get(route('organizations.applications.show', [$otherOrganization, $application]))
+            ->assertNotFound();
+
+        $this->actingAs($otherOwner)
+            ->patch(route('organizations.applications.status.update', [$otherOrganization, $application]), [
+                'status' => ApplicationStatus::Approved->value,
+            ])
+            ->assertForbidden();
+
+        $this->assertSame(ApplicationStatus::Submitted, $application->fresh()->status);
+    }
+
     /** @return array{Listing, Unit} */
     private function createApprovedListing(): array
     {
